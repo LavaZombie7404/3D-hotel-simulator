@@ -35,9 +35,10 @@ picioare. Hotelul merge si fara tine, dar merge prost.
 ### Liftul
 
 E un lift adevarat, nu o teleportare: o cabina cu usi glisante care circula
-intre etaje. Are **9 locuri**, primeste apeluri de la palier si butoane de
-etaj din interior, si se duce mereu la statia ceruta cea mai apropiata. Cand
-hotelul e plin chiar se face coada la el.
+intre etaje. Primeste apeluri de la palier si butoane de etaj din interior, si
+se duce mereu la statia ceruta cea mai apropiata. Are 14 locuri la inceput, si
+mai multe pe masura ce strangi boostere. Cand hotelul e plin chiar se face
+coada la el.
 
 Camerele de la parter nu au nevoie de lift — se ajunge direct pe hol.
 
@@ -57,14 +58,13 @@ dai o tura pe etaje sa strangi bacsisul.
 ### Banii
 
 Ii bagi inapoi in hotel: deblochezi camere noi, le urci nivelul si deschizi
-etajele 1 si 2. Cu cat sunt mai multe camere deblocate, cu atat vin clientii
-mai des.
+etajele. Cu cat sunt mai multe camere deblocate, cu atat vin clientii mai des.
 
 | Actiune | Cost |
 |---|---|
-| Deblocare camera | $25 x 1.26^(camere deja deblocate) |
+| Deblocare camera | $25 x 1.22^(camere deja deblocate) |
 | Upgrade camera (nivel N → N+1) | $35 x 1.7^(N-1) |
-| Deschidere etaj 1 / etaj 2 | $450 / $1800 |
+| Deschidere etaj 1 / 2 / 3 / 4 / 5 | $450 / $1.800 / $6.000 / $20.000 / $60.000 |
 
 Nivelul camerei se vede din culoarea podelei si din mobilierul care apare pe
 masura ce urci: pat → noptiera → birou → canapea → TV → planta → covor.
@@ -73,6 +73,37 @@ Usile sunt **verzi** cand camera e libera, **rosii** cand e ocupata si
 
 Nivelul mai mare inseamna si bacsis mai mare, nu doar chirie mai mare.
 
+## Renastere, etaje noi si prestigiu
+
+Cand ai castigat destul intr-o rulare, poti **renaste**: pierzi tot progresul
+(bani, camere, etaje) si primesti in schimb **un booster permanent**.
+
+- Fiecare booster da **+25% la toate incasarile** — check-in, chirie si bacsis.
+- Boosterii accelereaza si **fluxul de clienti**: sosiri mai dese si check-in
+  mai rapid la receptie. Fara asta, etajele castigate tarziu ar sta goale,
+  pentru ca limita reala n-ar fi numarul de camere, ci ghiseul.
+- Pornesti urmatoarea rulare cu ceva bani in plus, dupa radacina boosterilor.
+- Pragul urca: $5.000 pentru prima renastere, apoi cu 50% mai mult de fiecare
+  data.
+
+Cladirea insasi creste odata cu tine — **etaje care pana atunci nici nu existau**:
+
+| Renasteri | Ce apare |
+|---|---|
+| 10 | Etajul 3 |
+| 15 | Etajul 4 |
+| 20 | Etajul 5 + se deblocheaza **Prestigiul** |
+
+La 20 de renasteri apare **Prestigiul**: iti **inmulteste cu 10 boosterii pe
+care ii ai deja** si porneste numaratoarea renasterilor de la zero. Cu 20 de
+boostere (+500% venit) ajungi dintr-o data la 200 (+5.000%). Etajele castigate
+raman deschise pentru totdeauna.
+
+Hotelul complet are **6 niveluri si 48 de camere**.
+
+Butoanele de renastere si prestigiu cer doua click-uri, ca sa nu stergi tot din
+greseala; confirmarea expira singura dupa cateva secunde.
+
 ## Comenzi
 
 | | |
@@ -80,8 +111,8 @@ Nivelul mai mare inseamna si bacsis mai mare, nu doar chirie mai mare.
 | `W` `A` `S` `D` / sageti | misca chelnerul (relativ la cum e intoarsa camera) |
 | `E` in cabina | butonul de etaj: urci un nivel |
 | `E` pe palier | chemi liftul la tine |
-| `1` `2` `3` in cabina | apesi butonul etajului respectiv |
-| `1` `2` `3` in afara cabinei | doar muta privirea pe alt etaj |
+| `1`...`6` in cabina | apesi butonul etajului respectiv |
+| `1`...`6` in afara cabinei | doar muta privirea pe alt etaj |
 | `F` | camera urmareste chelnerul (porneste singura la prima miscare) |
 | Click stanga (drag) | roteste camera |
 | Click dreapta (drag) | deplaseaza |
@@ -99,15 +130,15 @@ ar acoperi tot. Cand iei liftul, vizualizarea te urmeaza automat.
 ## Cum e facut optimizat
 
 Scena intreaga se deseneaza in ~11-24 draw call-uri, indiferent de cati
-oaspeti sunt in hotel:
+oaspeti sunt in hotel (si sunt pana la 300):
 
 - **Toti oaspetii = 2 draw call-uri.** Un `InstancedMesh` pentru corpuri si
-  unul pentru capete, cu capacitate prealocata (180) si culoare per instanta.
+  unul pentru capete, cu capacitate prealocata (300) si culoare per instanta.
 - **Arhitectura statica e fuzionata.** Peretii, placile si lemnul fiecarui
   etaj sunt unite cu `mergeGeometries` in cate o singura geometrie, cu
   `matrixAutoUpdate = false`.
-- **Se randeaza doar etajul activ.** Celelalte etaje au `visible = false`, deci
-  nici nu ajung in pipeline.
+- **Se randeaza doar etajul activ.** Celelalte cinci etaje au `visible = false`,
+  deci nici nu ajung in pipeline.
 - **Podelele, usile si mobilierul sunt instantiate** si se reconstruiesc doar
   cand chiar se schimba ceva (`roomsDirty` / `doorsDirty`), nu in fiecare cadru.
 - **Zero alocari in bucla.** Toata starea camerelor si a oaspetilor sta in
@@ -154,6 +185,7 @@ node tools/smoke.mjs           # incarca jocul, lasa sa ruleze, verifica consola
 node tools/upper-floors.mjs    # deblocheaza tot si verifica liftul + etajele
 node tools/waiter.mjs          # miscare, coliziuni, bacsis, boost la receptie
 node tools/elevator.mjs        # cabina, usile, pasagerii, si ca traficul nu se blocheaza
+node tools/rebirth.mjs         # renastere, etajele la 10/15/20, prestigiul
 ```
 
 Toate fac capturi de ecran in `tools/shots/`.
@@ -161,4 +193,6 @@ Toate fac capturi de ecran in `tools/shots/`.
 Pentru reglaje din consola browserului exista `window.__hotel`:
 `__hotel.give(5000)`, `__hotel.unlockFloor(1)`, `__hotel.player`,
 `__hotel.setSpeed(4)` (accelerarea a ramas doar aici, pentru teste),
-`__hotel.lift`, `__hotel.stateCounts()` (cati oaspeti sunt in fiecare stare).
+`__hotel.lift`, `__hotel.stateCounts()` (cati oaspeti sunt in fiecare stare),
+`__hotel.unlockAll(3)`, `__hotel.grantRebirths(20)`, `__hotel.rebirth()`,
+`__hotel.prestige()`.

@@ -29,7 +29,7 @@ export const lift = {
 
 const hallCalls = new Uint8Array(C.FLOORS);
 const carCalls = new Uint8Array(C.FLOORS);
-const slots = new Uint8Array(C.LIFT_CAPACITY);
+const slots = new Uint8Array(C.LIFT_CAPACITY_MAX);
 
 // --- apeluri ----------------------------------------------------------------
 
@@ -52,22 +52,28 @@ export function doorsOpen() { return lift.doorT > 0.98 && lift.mode === IDLE; }
 
 // --- locuri in cabina -------------------------------------------------------
 
+/** Cate locuri are cabina acum — creste cu boosterii, ca sa tina pasul. */
+export function seats() {
+  return Math.min(C.LIFT_CAPACITY_MAX, C.LIFT_CAPACITY + Math.floor(state.boosters / 8));
+}
+
 export function takeSlot() {
-  if (lift.riders >= C.LIFT_CAPACITY) return -1;
-  for (let i = 0; i < C.LIFT_CAPACITY; i++) {
+  const cap = seats();
+  if (lift.riders >= cap) return -1;
+  for (let i = 0; i < cap; i++) {
     if (slots[i] === 0) { slots[i] = 1; lift.riders++; return i; }
   }
   return -1;
 }
 
 export function freeSlot(i) {
-  if (i >= 0 && i < C.LIFT_CAPACITY && slots[i] === 1) { slots[i] = 0; lift.riders--; }
+  if (i >= 0 && i < C.LIFT_CAPACITY_MAX && slots[i] === 1) { slots[i] = 0; lift.riders--; }
 }
 
-/** Pozitia pe X a locului `i` din cabina (grila 3x3). */
-export function slotX(i) { return C.ELEV_X + ((i % 3) - 1) * 0.85; }
-/** Pozitia pe Z a locului `i` din cabina. */
-export function slotZ(i) { return (Math.floor(i / 3) - 1) * 0.85; }
+// Locurile stau intr-o grila de 6 coloane, care incape in cabina si la
+// capacitate maxima (30 de locuri = 5 randuri).
+export function slotX(i) { return C.ELEV_X + ((i % 6) - 2.5) * 0.5; }
+export function slotZ(i) { return (Math.floor(i / 6) - 2) * 0.55; }
 
 /**
  * Locul de asteptare de langa lift.
@@ -78,6 +84,9 @@ export function waitX(side, k) {
   return base + side * Math.floor(k / 3) * 0.85;
 }
 export function waitZ(k) { return -1.1 + (k % 3) * 1.1; }
+
+// Nota: locurile de asteptare se repeta la fiecare 3 oameni pe adancime si se
+// intind in lateral; nu sunt limitate de capacitatea cabinei.
 
 // --- logica -----------------------------------------------------------------
 

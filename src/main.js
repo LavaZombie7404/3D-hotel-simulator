@@ -9,7 +9,7 @@ import * as THREE from '../vendor/three.module.js';
 import { OrbitControls } from '../vendor/addons/OrbitControls.js';
 import * as C from './config.js';
 import {
-  state, rooms, initWorld, rollIncomeBucket,
+  state, rooms, initWorld, rollIncomeBucket, doRebirth, doPrestige, payout, floorAvailable,
   tryUnlockRoom, tryUpgradeRoom, tryUnlockFloor,
 } from './world.js';
 import {
@@ -20,9 +20,14 @@ import {
   buildGuestMeshes, resetGuests, simulate, renderGuests, guestCount, queueLength,
   roomHasRequest, activeRequests, stateCounts,
 } from './guests.js';
-import { player, buildPlayer, updatePlayer, renderPlayer, rideTo, canRide, callLiftHere } from './player.js';
+import {
+  player, buildPlayer, updatePlayer, renderPlayer, resetPlayer, rideTo, canRide, callLiftHere,
+} from './player.js';
 import { lift, buildLift, updateLift, renderLift } from './elevator.js';
-import { initUI, refreshHUD, refreshPerf, refreshRoomPanel, setFloorButtons, updatePopups } from './ui.js';
+import {
+  initUI, refreshHUD, refreshPerf, refreshRoomPanel, setFloorButtons, updatePopups,
+  tickRebirthPrompt,
+} from './ui.js';
 
 // --- renderer ---------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -85,6 +90,7 @@ const _delta = new THREE.Vector3();
 // --- UI ---------------------------------------------------------------------
 initUI({
   onFloor(f) {
+    if (!floorAvailable(f)) return;
     if (!state.floorUnlocked[f]) {
       if (!tryUnlockFloor(f)) return;
     }
@@ -100,9 +106,29 @@ initUI({
     }
     refreshRoomPanel();
   },
+  onRebirth: () => resetAfter(doRebirth()),
+  onPrestige: () => resetAfter(doPrestige()),
 });
 setFloorButtons();
 refreshRoomPanel();
+
+/**
+ * Dupa o renastere sau un prestigiu hotelul o ia de la zero, dar cu ce ai
+ * castigat permanent. Trebuie golite si lucrurile care nu tin de world.js:
+ * oaspetii, liftul si chelnerul.
+ */
+function resetAfter(happened) {
+  if (!happened) return;
+  resetGuests();
+  resetPlayer();
+  follow = false;
+  setActiveFloor(0);
+  camera.position.set(CENTER.x, 42, 13);
+  controls.target.copy(CENTER);
+  controls.update();
+  setFloorButtons();
+  refreshRoomPanel();
+}
 
 /** Schimba etajul vizibil si muta camera pe verticala odata cu el. */
 function focusFloor(f) {
@@ -167,7 +193,7 @@ window.addEventListener('keydown', (e) => {
   const n = Number(e.key);
   if (n >= 1 && n <= C.FLOORS) {
     const f = n - 1;
-    if (!state.floorUnlocked[f]) return;
+    if (!floorAvailable(f) || !state.floorUnlocked[f]) return;
     // In lift tastele de etaj te duc acolo; altfel doar muta privirea.
     if (canRide()) rideTo(f);
     else focusFloor(f);
@@ -195,6 +221,26 @@ window.__hotel = {
   player,
   lift,
   stateCounts,
+  payout,
+  config: C,
+  floorAvailable,
+  /** Scurtatura pentru teste: cumpara tot ce e disponibil acum. */
+  unlockAll(levels = 0) {
+    for (let f = 0; f < C.FLOORS; f++) tryUnlockFloor(f);
+    for (let r = 0; r < C.TOTAL_ROOMS; r++) tryUnlockRoom(r);
+    for (let i = 0; i < levels; i++) {
+      for (let r = 0; r < C.TOTAL_ROOMS; r++) tryUpgradeRoom(r);
+    }
+    setFloorButtons();
+  },
+  /** Scurtatura pentru teste: ca si cum ai fi renascut de n ori. */
+  grantRebirths(n) {
+    state.rebirths = n;
+    state.maxRebirths = Math.max(state.maxRebirths, n);
+    setFloorButtons();
+  },
+  rebirth: () => resetAfter(doRebirth()),
+  prestige: () => resetAfter(doPrestige()),
   setSpeed(s) { speed = s; },
 };
 
@@ -249,6 +295,7 @@ function frame(now) {
   renderer.render(scene, camera);
 
   updatePopups(camera, dt, window.innerWidth, window.innerHeight);
+  tickRebirthPrompt(dt);
 
   // HUD la 5 Hz, contor FPS la 2 Hz.
   hudAcc += dt;

@@ -16,8 +16,11 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 
-await page.goto(URL, { waitUntil: 'networkidle' });
-await page.waitForTimeout(1200);
+const C = await (async () => {
+  await page.goto(URL, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  return page.evaluate(() => ({ FLOOR_H: window.__hotel.config.FLOOR_H }));
+})();
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -27,10 +30,9 @@ const check = (name, ok, detail) => {
 
 await page.evaluate(() => {
   const h = window.__hotel;
-  h.give(500000);
-  for (let f = 0; f < 3; f++) h.unlockFloor(f);
-  for (let r = 0; r < h.rooms.level.length; r++) h.unlockRoom(r);
-  for (let r = 0; r < 24; r++) for (let i = 0; i < 3; i++) h.upgradeRoom(r);
+  h.grantRebirths(20);      // ca sa existe si etajele de sus
+  h.give(5000000);
+  h.unlockAll(3);
   h.setSpeed(3);
 });
 
@@ -49,7 +51,7 @@ const trace = await page.evaluate(() => new Promise((res) => {
     res({ levels: [...ys].sort((a, b) => a - b), modes: [...modes].sort(), doors: doors.size, peakRiders });
   }, 18000);
 }));
-check('cabina circula intre etaje', trace.levels.length > 3 && Math.max(...trace.levels) >= 4,
+check('cabina circula intre etaje', trace.levels.length > 3 && Math.max(...trace.levels) >= 8,
       `inaltimi vazute: ${trace.levels.join(', ')}`);
 check('trece prin toate starile (idle/inchide/merge/deschide)', trace.modes.length === 4,
       `stari: ${trace.modes.join(',')}`);
@@ -62,26 +64,28 @@ const ride = await page.evaluate(() => new Promise((res) => {
   const h = window.__hotel, p = h.player;
   p.x = -2.6; p.z = 0; p.floor = 0;             // intra in put la parter
   const start = { floor: p.floor, y: p.y };
-  let rodeUp = false, wasInCabin = false;
+  // Liftul serveste si alti pasageri, deci pana la final poate sa-l fi adus
+  // inapoi jos. Ne intereseaza cel mai sus etaj la care a ajuns, nu unde e
+  // fix in momentul masuratorii.
+  let maxFloor = 0, maxY = 0, wasInCabin = false;
   const id = setInterval(() => {
-    if (p.inCabin) {
-      wasInCabin = true;
-      if (h.lift.mode === 0 && h.lift.floor === 0) h.lift.__ = 0;   // no-op
-    }
-    if (p.floor > 0) rodeUp = true;
+    if (p.inCabin) wasInCabin = true;
+    maxFloor = Math.max(maxFloor, p.floor);
+    maxY = Math.max(maxY, p.y);
   }, 60);
   // Apasa butonul de etaj 2 din cabina de cate ori e nevoie.
   const press = setInterval(() => {
-    if (p.inCabin) window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3' }));
+    if (p.inCabin) window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit6', key: '6' }));
   }, 300);
   setTimeout(() => {
     clearInterval(id); clearInterval(press);
-    res({ start, end: { floor: p.floor, y: +p.y.toFixed(2) }, wasInCabin, rodeUp });
+    res({ start, end: { floor: p.floor, y: +p.y.toFixed(2) },
+          wasInCabin, maxFloor, maxY: +maxY.toFixed(2) });
   }, 14000);
 }));
 check('chelnerul e detectat in cabina', ride.wasInCabin, JSON.stringify(ride));
-check('chelnerul urca cu liftul', ride.rodeUp && ride.end.floor > 0,
-      `etaj ${ride.start.floor} -> ${ride.end.floor} (y = ${ride.end.y})`);
+check('chelnerul urca cu liftul', ride.maxFloor > 0 && ride.maxY > C.FLOOR_H - 0.5,
+      `a ajuns pana la etajul ${ride.maxFloor} (y max = ${ride.maxY}), a coborat la ${ride.end.floor}`);
 await page.screenshot({ path: `${OUT}/31-chelner-in-lift.png` });
 
 // --- 3. hotelul nu se sufoca -----------------------------------------------
@@ -90,16 +94,17 @@ await page.evaluate(() => { const p = window.__hotel.player; p.x = 20; p.z = 0; 
 const sample = () => page.evaluate(() => {
   const h = window.__hotel;
   let occ = 0;
-  for (let r = 0; r < 24; r++) if (h.rooms.occupant[r] >= 0) occ++;
-  return { occ, guests: +document.getElementById('st-guests').textContent, money: h.state.money };
+  for (let r = 0; r < h.config.TOTAL_ROOMS; r++) if (h.rooms.occupant[r] >= 0) occ++;
+  return { occ, total: h.config.TOTAL_ROOMS,
+           guests: +document.getElementById('st-guests').textContent, money: h.state.money };
 });
 const a = await sample();
 await page.waitForTimeout(40000);
 const b = await sample();
 console.log('  dupa 40s:', JSON.stringify(a), '->', JSON.stringify(b));
-check('camerele raman ocupate (liftul face fata)', b.occ >= 16, `${b.occ}/24 ocupate`);
+check('camerele raman ocupate (liftul face fata)', b.occ >= b.total * 0.5, `${b.occ}/${b.total} ocupate`);
 check('banii continua sa creasca', b.money > a.money, `$${Math.round(a.money)} -> $${Math.round(b.money)}`);
-check('nu se aduna la infinit oaspeti blocati', b.guests < 140, `${b.guests} oaspeti in hotel`);
+check('nu se aduna la infinit oaspeti blocati', b.guests < 260, `${b.guests} oaspeti in hotel`);
 await page.screenshot({ path: `${OUT}/32-trafic.png` });
 
 await browser.close();

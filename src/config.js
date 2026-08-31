@@ -14,7 +14,7 @@ export const FLOOR_H = 4;         // distanta dintre etaje
 
 export const ROOMS_PER_SIDE = 4;                        // camere pe fiecare latura a holului
 export const ROOMS_PER_FLOOR = ROOMS_PER_SIDE * 2;      // 8
-export const FLOORS = 3;
+export const FLOORS = 6;          // parter + etajele 1-5
 export const TOTAL_ROOMS = ROOMS_PER_FLOOR * FLOORS;    // 24
 
 export const CORRIDOR_X0 = 0;
@@ -29,10 +29,11 @@ export const DOOR_W = 1.8;        // golul usii in peretele dinspre hol
 export const ELEV_X = -2.6;
 export const ELEV_HW = 1.9;       // jumatate din latura casei (a putului)
 export const CABIN_HW = 1.55;     // jumatate din latura cabinei
-export const LIFT_CAPACITY = 9;   // cati oaspeti incap in cabina
-export const LIFT_CAR_SPEED = 7;  // m/s pe verticala
+export const LIFT_CAPACITY = 14;  // locuri de baza in cabina (cresc cu boosterii)
+export const LIFT_CAPACITY_MAX = 30;
+export const LIFT_CAR_SPEED = 9;  // m/s pe verticala
 export const LIFT_DOOR_TIME = 0.4;// cat dureaza deschisul sau inchisul usilor
-export const LIFT_OPEN_WAIT = 0.9;// cat sta cu usile deschise intr-o statie
+export const LIFT_OPEN_WAIT = 0.7;// cat sta cu usile deschise intr-o statie
 export const LIFT_WAIT_GAP = 0.9; // la ce distanta de cabina astepta oamenii
 
 // --- Receptie ---
@@ -52,7 +53,7 @@ export const WAIT_STEP = 1.6;
 export const MAX_WAIT = 16;
 
 // --- Oaspeti ---
-export const MAX_GUESTS = 180;
+export const MAX_GUESTS = 300;
 export const MAX_WP = 10;         // waypoint-uri maxime pe traseu
 export const WALK_SPEED = 3.4;    // m/s
 export const SPAWN_X = -30;       // in afara ecranului, de unde vin
@@ -69,10 +70,29 @@ export const LOBBY_PATIENCE = 25; // cat asteapta in lobby dupa o camera libera
 export const QUEUE_PATIENCE = 30; // plasa de siguranta pentru cine tot nu ajunge la ghiseu
 
 export const UNLOCK_BASE = 25;
-export const UNLOCK_GROWTH = 1.26;
+export const UNLOCK_GROWTH = 1.22;
 export const UPGRADE_BASE = 35;
 export const UPGRADE_GROWTH = 1.7;
-export const FLOOR_COST = [0, 450, 1800];
+export const FLOOR_COST = [0, 450, 1800, 6000, 20000, 60000];
+
+// Etajele de sus nu exista de la inceput: apar dupa un numar de renasteri.
+export const FLOOR_REBIRTH_REQ = [0, 0, 0, 10, 15, 20];
+
+// --- Renastere si prestigiu ---
+// O renastere = un booster. Pragul urca cu fiecare renastere.
+export const REBIRTH_BASE = 5000;
+export const REBIRTH_STEP = 0.5;      // pragul = REBIRTH_BASE * (1 + renasteri * 0.5)
+export const BOOST_BONUS = 0.25;      // +25% la toate incasarile, per booster
+export const BOOST_START_MONEY = 60;  // bani in plus la start, dupa radacina boosterilor
+
+// Prestigiul: dupa 20 de renasteri, inmulteste cu 10 boosterii pe care ii ai.
+export const PRESTIGE_REBIRTHS = 20;
+export const PRESTIGE_MULT = 10;
+
+// Boosterii cresc si fluxul de clienti — altfel etajele noi ar sta goale,
+// pentru ca receptia si sosirile ar ramane limita reala.
+export const FLOW_PER_BOOST = 0.05;
+export const FLOW_MAX = 6;
 
 // --- Sosiri ---
 export const ARRIVE_MIN = 0.9;

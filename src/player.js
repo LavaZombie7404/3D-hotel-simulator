@@ -72,6 +72,18 @@ export function buildPlayer(scene) {
   return group;
 }
 
+/** Il pune inapoi in lobby (folosit la renastere). */
+export function resetPlayer() {
+  player.x = C.LOBBY_X0 + 6;
+  player.z = -5;
+  player.floor = 0;
+  player.y = 0;
+  player.yaw = Math.PI / 2;
+  player.inCabin = false;
+  player.atDesk = false;
+  setServiceBoost(false);
+}
+
 // --- coliziune circle vs AABB ----------------------------------------------
 
 /** Impinge jucatorul afara din orice perete in care a intrat. */

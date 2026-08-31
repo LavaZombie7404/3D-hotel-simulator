@@ -40,10 +40,9 @@ const check = (name, ok, detail) => {
 // Deblocam tot, ca sa avem clienti in camere pe toate etajele.
 await page.evaluate(() => {
   const h = window.__hotel;
-  h.give(200000);
-  for (let f = 0; f < 3; f++) h.unlockFloor(f);
-  for (let r = 0; r < h.rooms.level.length; r++) h.unlockRoom(r);
-  for (let r = 0; r < 24; r++) for (let i = 0; i < 3; i++) h.upgradeRoom(r);
+  h.grantRebirths(20);      // ca sa existe si etajele de sus
+  h.give(5000000);
+  h.unlockAll(3);
   h.setSpeed(2);
 });
 
@@ -95,7 +94,8 @@ await page.evaluate(async () => {
   const t0 = Date.now();
   let i = 0;
   while (Date.now() - t0 < 25000) {
-    const r = 8 + (i++ % 8);                       // camerele etajului 1
+    const n = h.config.ROOMS_PER_FLOOR;
+    const r = n + (i++ % n);                       // camerele etajului 1
     p.x = h.rooms.cx[r]; p.z = h.rooms.cz[r]; p.floor = 1;
     await new Promise((res) => setTimeout(res, 260));
   }

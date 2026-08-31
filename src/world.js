@@ -28,7 +28,12 @@ export const state = {
   tips: 0,              // bacsis incasat de chelner
   servedRequests: 0,
   missedRequests: 0,
-  floorUnlocked: [true, false, false],
+  boosters: 0,          // +25% incasari fiecare; o renastere da unul
+  rebirths: 0,          // renasteri de la ultimul prestigiu
+  maxRebirths: 0,       // maximul atins vreodata — de el depind etajele noi
+  prestige: 0,
+  lifetimeEarned: 0,    // castig cumulat peste toate renasterile
+  floorUnlocked: [true, false, false, false, false, false],
   activeFloor: 0,
   selected: -1,
   roomsDirty: true,     // cere reconstructia instantelor vizuale (nivel/deblocare)
@@ -111,8 +116,49 @@ export function upgradeCost(level) {
   return Math.round(C.UPGRADE_BASE * Math.pow(C.UPGRADE_GROWTH, level - 1));
 }
 
+// --- bonusul dat de stele ---------------------------------------------------
+
+/** Multiplicatorul permanent adus de boosteri. */
+export function incomeMult() {
+  return 1 + state.boosters * C.BOOST_BONUS;
+}
+
+/**
+ * Cat de repede curge fluxul de clienti (sosiri + receptie).
+ * Creste cu boosterii: fara asta, etajele deblocate tarziu ar sta goale,
+ * pentru ca limita reala n-ar fi numarul de camere, ci ghiseul.
+ */
+export function flowMult() {
+  return Math.min(C.FLOW_MAX, 1 + state.boosters * C.FLOW_PER_BOOST);
+}
+
+/** Cat dureaza un check-in acum. */
+export function serviceTime() {
+  return C.SERVICE_TIME / flowMult();
+}
+
+/** Etajul f exista deja in cladire? (etajele de sus apar dupa renasteri) */
+export function floorAvailable(f) {
+  return state.maxRebirths >= C.FLOOR_REBIRTH_REQ[f];
+}
+
+export function withBonus(v) {
+  return Math.round(v * incomeMult());
+}
+
+/** Cat plateste un client la check-out. Include deja bonusul de stele. */
 export function payout(level) {
-  return C.PAY_PER_LEVEL * level;
+  return withBonus(C.PAY_PER_LEVEL * level);
+}
+
+/** Bacsisul pentru room service, cu bonus. */
+export function tipFor(level) {
+  return withBonus(C.TIP_PER_LEVEL * level);
+}
+
+/** Taxa de check-in, cu bonus. */
+export function checkInFee() {
+  return withBonus(C.CHECK_IN_FEE);
 }
 
 export function earn(amount) {
@@ -131,6 +177,7 @@ function spend(amount) {
 export function tryUnlockRoom(r) {
   if (r < 0 || rooms.level[r] > 0) return false;
   if (!state.floorUnlocked[rooms.floor[r]]) return false;
+  if (!floorAvailable(rooms.floor[r])) return false;
   if (!spend(unlockCost())) return false;
   rooms.level[r] = 1;
   state.roomsDirty = true;
@@ -147,6 +194,7 @@ export function tryUpgradeRoom(r) {
 
 export function tryUnlockFloor(f) {
   if (f < 0 || f >= C.FLOORS || state.floorUnlocked[f]) return false;
+  if (!floorAvailable(f)) return false;
   if (!spend(C.FLOOR_COST[f])) return false;
   state.floorUnlocked[f] = true;
   state.roomsDirty = true;
@@ -174,7 +222,89 @@ export function anyFreeRoom() {
 export function arrivalInterval() {
   const n = unlockedCount();
   const t = C.ARRIVE_MAX / (1 + n * C.ARRIVE_PER_ROOM);
-  return Math.max(C.ARRIVE_MIN, Math.min(C.ARRIVE_MAX, t));
+  const floor = C.ARRIVE_MIN / flowMult();
+  return Math.max(floor, Math.min(C.ARRIVE_MAX, t));
+}
+
+// --- renastere --------------------------------------------------------------
+
+/** Cat trebuie sa castigi intr-o rulare ca sa poti renaste. */
+export function rebirthGoal() {
+  return Math.round(C.REBIRTH_BASE * (1 + state.rebirths * C.REBIRTH_STEP));
+}
+
+export function canRebirth() {
+  return state.totalEarned >= rebirthGoal();
+}
+
+export function canPrestige() {
+  return state.rebirths >= C.PRESTIGE_REBIRTHS;
+}
+
+/** Urmatorul etaj care apare, si dupa cate renasteri. -1 daca s-au deschis toate. */
+export function nextFloorUnlock() {
+  for (let f = 0; f < C.FLOORS; f++) {
+    if (!floorAvailable(f)) return { floor: f, at: C.FLOOR_REBIRTH_REQ[f] };
+  }
+  return null;
+}
+
+/** Reseteaza rularea curenta, pastrand ce e permanent (boosteri, prestigiu). */
+function resetRun() {
+  state.money = C.START_MONEY + Math.round(C.BOOST_START_MONEY * Math.sqrt(state.boosters));
+  state.totalEarned = 0;
+  state.totalSpent = 0;
+  state.servedGuests = 0;
+  state.lostGuests = 0;
+  state.checkouts = 0;
+  state.tips = 0;
+  state.servedRequests = 0;
+  state.missedRequests = 0;
+
+  state.floorUnlocked = state.floorUnlocked.map((_, i) => i === 0);
+  state.activeFloor = 0;
+  state.selected = -1;
+
+  rooms.level.fill(0);
+  rooms.occupant.fill(-1);
+  rooms.level[roomId(0, 0, 0)] = 1;
+  rooms.level[roomId(0, 1, 0)] = 1;
+
+  incomeRing.fill(0);
+  incomeAcc = 0;
+  popupQueue.n = 0;
+
+  state.roomsDirty = true;
+  state.doorsDirty = true;
+}
+
+/**
+ * Renaste: pierzi progresul rularii si primesti un booster permanent.
+ * Returneaza true daca s-a intamplat.
+ */
+export function doRebirth() {
+  if (!canRebirth()) return false;
+  state.lifetimeEarned += state.totalEarned;
+  state.boosters++;
+  state.rebirths++;
+  state.maxRebirths = Math.max(state.maxRebirths, state.rebirths);
+  resetRun();
+  return true;
+}
+
+/**
+ * Prestigiu: dupa PRESTIGE_REBIRTHS renasteri, inmulteste cu 10 boosterii pe
+ * care ii ai deja si porneste numaratoarea renasterilor de la zero. Etajele
+ * castigate raman, pentru ca depind de maxRebirths.
+ */
+export function doPrestige() {
+  if (!canPrestige()) return false;
+  state.lifetimeEarned += state.totalEarned;
+  state.boosters *= C.PRESTIGE_MULT;
+  state.prestige++;
+  state.rebirths = 0;
+  resetRun();
+  return true;
 }
 
 // Apelat o data pe secunda de simulare.

@@ -8,6 +8,7 @@ import * as C from './config.js';
 import {
   rooms, state, popupQueue,
   unlockCost, upgradeCost, payout, unlockedCount, occupiedCount, incomePerMinute,
+  incomeMult, canRebirth, canPrestige, rebirthGoal, nextFloorUnlock, floorAvailable,
 } from './world.js';
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +26,42 @@ const popLife = new Float32Array(POP_MAX);
 const POP_TTL = 1.5;
 const _v = new THREE.Vector3();
 
+// --- butoane care cer confirmare --------------------------------------------
+// Renasterea si prestigiul sterg tot progresul rularii, deci nu se declanseaza
+// din prima. Confirmarea expira singura daca te razgandesti.
+const armed = [];
+
+function armButton(btn, confirmText, action) {
+  const entry = { btn, confirmText, action, timer: 0 };
+  armed.push(entry);
+  btn.addEventListener('click', () => {
+    if (entry.timer <= 0) {
+      entry.timer = 4;
+      btn.classList.add('confirm');
+      btn.textContent = confirmText;
+      return;
+    }
+    entry.timer = 0;
+    btn.classList.remove('confirm');
+    action();
+  });
+}
+
+function isArmed(btn) {
+  const e = armed.find((a) => a.btn === btn);
+  return e ? e.timer > 0 : false;
+}
+
+export function tickRebirthPrompt(dt) {
+  for (const e of armed) {
+    if (e.timer <= 0) continue;
+    e.timer -= dt;
+    if (e.timer <= 0) e.btn.classList.remove('confirm');
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 export function initUI(cbs) {
   handlers = cbs;
 
@@ -38,6 +75,11 @@ export function initUI(cbs) {
   el.lost = $('st-lost');
   el.tips = $('st-tips');
   el.req = $('st-req');
+  el.stars = $('stars');
+  el.starProgress = $('star-progress');
+  el.rebirth = $('rebirth');
+  el.prestige = $('prestige');
+  el.nextFloor = $('next-floor');
   el.roomEmpty = $('room-empty');
   el.roomInfo = $('room-info');
   el.roomTitle = $('room-title');
@@ -47,17 +89,20 @@ export function initUI(cbs) {
   el.perf = $('perf');
   el.popups = $('popups');
 
-  // Butoanele de etaj.
+  // Cate un buton pentru fiecare nivel posibil al cladirii. Etajele care inca
+  // n-au aparut raman ascunse (vezi setFloorButtons).
   el.floorBtns = [];
   for (let f = 0; f < C.FLOORS; f++) {
     const b = document.createElement('button');
-    b.textContent = f === 0 ? 'Parter' : 'Etaj ' + f;
+    b.textContent = floorName(f);
     b.addEventListener('click', () => handlers.onFloor(f));
     el.floors.appendChild(b);
     el.floorBtns.push(b);
   }
 
   el.roomAction.addEventListener('click', () => handlers.onRoomAction(state.selected));
+  armButton(el.rebirth, 'Sigur? Pierzi tot — click din nou', () => handlers.onRebirth());
+  armButton(el.prestige, 'Sigur? Click din nou', () => handlers.onPrestige());
 
   for (let i = 0; i < POP_MAX; i++) {
     const d = document.createElement('div');
@@ -69,21 +114,25 @@ export function initUI(cbs) {
   }
 }
 
+function floorName(f) { return f === 0 ? 'Parter' : 'Etaj ' + f; }
+
 export function setFloorButtons() {
   for (let f = 0; f < C.FLOORS; f++) {
     const b = el.floorBtns[f];
+    // Etajele care inca n-au aparut nu se arata deloc.
+    b.style.display = floorAvailable(f) ? '' : 'none';
     b.classList.toggle('on', f === state.activeFloor);
     if (!state.floorUnlocked[f]) {
-      b.textContent = (f === 0 ? 'Parter' : 'Etaj ' + f) + ' \u{1F512}';
-      b.title = 'Deblocheaza pentru $' + C.FLOOR_COST[f];
+      b.textContent = floorName(f) + ' \u{1F512}';
+      b.title = 'Deblocheaza pentru $' + C.FLOOR_COST[f].toLocaleString('ro-RO');
     } else {
-      b.textContent = f === 0 ? 'Parter' : 'Etaj ' + f;
+      b.textContent = floorName(f);
       b.title = '';
     }
   }
 }
 
-// --- text ------------------------------------------------------------------
+// --- panoul camerei ---------------------------------------------------------
 
 function roomName(r) {
   const n = rooms.side[r] * C.ROOMS_PER_SIDE + rooms.index[r] + 1;
@@ -109,20 +158,18 @@ export function refreshRoomPanel() {
       ? 'Blocata · deblocheaz-o ca sa primesti clienti'
       : 'Etajul ' + rooms.floor[r] + ' nu e deschis inca';
     el.roomBar.style.width = '0%';
-    const cost = unlockCost();
-    el.roomAction.textContent = floorOpen
-      ? 'Deblocheaza — $' + cost
-      : 'Deschide etajul — $' + C.FLOOR_COST[rooms.floor[r]];
-    const price = floorOpen ? cost : C.FLOOR_COST[rooms.floor[r]];
-    el.roomAction.disabled = state.money < price;
+    const cost = floorOpen ? unlockCost() : C.FLOOR_COST[rooms.floor[r]];
+    el.roomAction.textContent = (floorOpen ? 'Deblocheaza — $' : 'Deschide etajul — $') +
+      cost.toLocaleString('ro-RO');
+    el.roomAction.disabled = state.money < cost;
     el.roomAction.className = 'buy';
     return;
   }
 
   const occ = rooms.occupant[r] >= 0;
   el.roomSub.textContent =
-    'Nivel ' + lvl + '/' + C.MAX_LEVEL + ' · $' + payout(lvl) + ' per client · ' +
-    (occ ? 'ocupata' : 'libera');
+    'Nivel ' + lvl + '/' + C.MAX_LEVEL + ' · $' + payout(lvl).toLocaleString('ro-RO') +
+    ' per client · ' + (occ ? 'ocupata' : 'libera');
   el.roomBar.style.width = (lvl / C.MAX_LEVEL * 100) + '%';
 
   if (lvl >= C.MAX_LEVEL) {
@@ -131,12 +178,68 @@ export function refreshRoomPanel() {
     el.roomAction.className = '';
   } else {
     const cost = upgradeCost(lvl);
-    el.roomAction.textContent = 'Nivel ' + (lvl + 1) + ' — $' + cost +
-      '  (→ $' + payout(lvl + 1) + ')';
+    el.roomAction.textContent = 'Nivel ' + (lvl + 1) + ' — $' + cost.toLocaleString('ro-RO') +
+      '  (→ $' + payout(lvl + 1).toLocaleString('ro-RO') + ')';
     el.roomAction.disabled = state.money < cost;
     el.roomAction.className = 'buy';
   }
 }
+
+// --- renastere / prestigiu --------------------------------------------------
+
+function boosterLabel(n) {
+  if (n === 0) return 'Fara boostere';
+  return '★ ' + n.toLocaleString('ro-RO') + (n === 1 ? ' booster' : ' boostere');
+}
+
+function refreshRebirth() {
+  el.stars.textContent = boosterLabel(state.boosters);
+  if (state.boosters > 0) {
+    el.stars.textContent += '   +' +
+      Math.round((incomeMult() - 1) * 100).toLocaleString('ro-RO') + '% venit';
+  }
+
+  if (!isArmed(el.rebirth)) {
+    if (canRebirth()) {
+      el.starProgress.textContent = state.rebirths + ' renasteri · ai strans $' +
+        Math.floor(state.totalEarned).toLocaleString('ro-RO');
+      el.rebirth.textContent = 'Renaste — +1 booster';
+      el.rebirth.disabled = false;
+      el.rebirth.className = 'buy';
+    } else {
+      const need = rebirthGoal() - state.totalEarned;
+      el.starProgress.textContent = state.rebirths + ' renasteri · inca $' +
+        Math.ceil(need).toLocaleString('ro-RO') + ' pentru urmatoarea';
+      el.rebirth.textContent = 'Renaste';
+      el.rebirth.disabled = true;
+      el.rebirth.className = '';
+    }
+  }
+
+  // Prestigiul apare abia dupa ce ai strans destule renasteri.
+  const showPrestige = canPrestige() || state.prestige > 0;
+  el.prestige.style.display = showPrestige ? '' : 'none';
+  if (showPrestige && !isArmed(el.prestige)) {
+    if (canPrestige()) {
+      el.prestige.textContent = 'Prestigiu — boosterii x' + C.PRESTIGE_MULT;
+      el.prestige.disabled = false;
+    } else {
+      el.prestige.textContent = 'Prestigiu la ' + C.PRESTIGE_REBIRTHS + ' renasteri';
+      el.prestige.disabled = true;
+    }
+  }
+
+  const next = nextFloorUnlock();
+  if (next) {
+    el.nextFloor.textContent = 'Etaj ' + next.floor + ' apare la ' + next.at + ' renasteri';
+  } else if (state.prestige > 0) {
+    el.nextFloor.textContent = 'Prestigiu ' + state.prestige + ' · toate etajele deschise';
+  } else {
+    el.nextFloor.textContent = 'Toate etajele sunt deschise';
+  }
+}
+
+// --- HUD --------------------------------------------------------------------
 
 /** Actualizarea "lenta" a HUD-ului, apelata de ~5 ori pe secunda. */
 export function refreshHUD(guests, queueLen, requests) {
@@ -149,6 +252,7 @@ export function refreshHUD(guests, queueLen, requests) {
   el.lost.textContent = state.lostGuests;
   el.tips.textContent = '$' + Math.floor(state.tips).toLocaleString('ro-RO');
   el.req.textContent = requests;
+  refreshRebirth();
   setFloorButtons();
   refreshRoomPanel();
 }

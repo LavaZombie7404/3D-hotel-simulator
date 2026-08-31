@@ -16,6 +16,7 @@ import * as THREE from '../vendor/three.module.js';
 import * as C from './config.js';
 import {
   rooms, state, earn, findBestFreeRoom, arrivalInterval, payout, pushPopup,
+  checkInFee, tipFor, serviceTime,
 } from './world.js';
 import {
   lift, callFromFloor, callFromCabin, liftReady, takeSlot, freeSlot,
@@ -156,7 +157,7 @@ export function serveRoom(r) {
   const g = rooms.occupant[r];
   if (g < 0 || gReqOn[g] !== 1) return 0;
   gReqOn[g] = 0;
-  const tip = C.TIP_PER_LEVEL * rooms.level[r];
+  const tip = tipFor(rooms.level[r]);
   earn(tip);
   state.tips += tip;
   state.servedRequests++;
@@ -387,9 +388,10 @@ function assignRoom(g) {
 }
 
 function checkIn(g) {
-  earn(C.CHECK_IN_FEE);
+  const fee = checkInFee();
+  earn(fee);
   state.servedGuests++;
-  pushPopup(gX[g], gY[g] + 2.0, gZ[g], C.CHECK_IN_FEE);
+  pushPopup(gX[g], gY[g] + 2.0, gZ[g], fee);
 
   if (assignRoom(g)) return;
 
@@ -437,7 +439,7 @@ export function simulate(dt) {
     if (gState[g] === S_TO_QUEUE && arrived(g)) gState[g] = S_QUEUE;
     if (gState[g] === S_QUEUE) {
       serviceTimer += dt;
-      if (serviceTimer >= C.SERVICE_TIME * serviceMul) {
+      if (serviceTimer >= serviceTime() * serviceMul) {
         serviceTimer = 0;
         queue.shift();
         checkIn(g);

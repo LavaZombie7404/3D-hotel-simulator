@@ -22,13 +22,13 @@ await page.waitForTimeout(1200);
 // Bani + toate etajele si camerele deblocate, cateva urcate la nivel mare.
 const setup = await page.evaluate(() => {
   const h = window.__hotel;
-  h.give(500000);
-  for (let f = 0; f < 3; f++) h.unlockFloor(f);
-  let unlocked = 0;
-  for (let r = 0; r < h.rooms.level.length; r++) if (h.unlockRoom(r)) unlocked++;
-  for (let r = 0; r < 8; r++) for (let i = 0; i < 5; i++) h.upgradeRoom(r);
+  h.grantRebirths(20);      // ca sa existe si etajele de sus
+  h.give(5000000);
+  h.unlockAll(3);
   h.setSpeed(4);
-  return { unlocked, floors: h.state.floorUnlocked.slice(), lvl0: h.rooms.level[0] };
+  let unlocked = 0;
+  for (let r = 0; r < h.config.TOTAL_ROOMS; r++) if (h.rooms.level[r] > 0) unlocked++;
+  return { unlocked, etaje: h.config.FLOORS, floors: h.state.floorUnlocked.slice() };
 });
 console.log('setup:', setup);
 
@@ -47,32 +47,32 @@ await page.screenshot({ path: `${OUT}/10-parter.png` });
 
 // Ocuparea pe etaje, citita direct din starea simularii.
 const perFloor = await page.evaluate(() => {
-  const h = window.__hotel, out = [];
-  for (let f = 0; f < 3; f++) {
+  const h = window.__hotel, n = h.config.ROOMS_PER_FLOOR, out = [];
+  for (let f = 0; f < h.config.FLOORS; f++) {
     let occ = 0, tot = 0;
-    for (let r = f * 8; r < f * 8 + 8; r++) { if (h.rooms.level[r] > 0) tot++; if (h.rooms.occupant[r] >= 0) occ++; }
-    out.push(`etaj ${f}: ${occ}/${tot} ocupate`);
+    for (let r = f * n; r < f * n + n; r++) { if (h.rooms.level[r] > 0) tot++; if (h.rooms.occupant[r] >= 0) occ++; }
+    out.push(`E${f}: ${occ}/${tot}`);
   }
   return out;
 });
 console.log(perFloor.join('  |  '));
 
-await page.evaluate(() => window.__hotel.focusFloor(1));
+await page.evaluate(() => window.__hotel.focusFloor(3));
 await page.waitForTimeout(2500);
-await page.screenshot({ path: `${OUT}/11-etaj1.png` });
+await page.screenshot({ path: `${OUT}/11-etaj3.png` });
 
-await page.evaluate(() => window.__hotel.focusFloor(2));
+await page.evaluate(() => window.__hotel.focusFloor(5));
 await page.waitForTimeout(2500);
-await page.screenshot({ path: `${OUT}/12-etaj2.png` });
+await page.screenshot({ path: `${OUT}/12-etaj5.png` });
 
 await page.waitForTimeout(12000);
 console.log('final  :', await stats());
 console.log((await page.evaluate(() => {
-  const h = window.__hotel, out = [];
-  for (let f = 0; f < 3; f++) {
+  const h = window.__hotel, n = h.config.ROOMS_PER_FLOOR, out = [];
+  for (let f = 0; f < h.config.FLOORS; f++) {
     let occ = 0;
-    for (let r = f * 8; r < f * 8 + 8; r++) if (h.rooms.occupant[r] >= 0) occ++;
-    out.push(`etaj ${f}: ${occ}/8`);
+    for (let r = f * n; r < f * n + n; r++) if (h.rooms.occupant[r] >= 0) occ++;
+    out.push(`E${f}: ${occ}/${n}`);
   }
   return out;
 })).join('  |  '));

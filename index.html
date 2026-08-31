@@ -106,14 +106,6 @@
   <div class="panel">
     <div class="row" id="floors"></div>
   </div>
-  <div class="panel">
-    <div class="row" id="speeds">
-      <button data-speed="0">II</button>
-      <button data-speed="1" class="on">1x</button>
-      <button data-speed="2">2x</button>
-      <button data-speed="4">4x</button>
-    </div>
-  </div>
 </div>
 
 <div id="stats" class="panel">
@@ -122,6 +114,9 @@
   <div class="line"><span>La coada</span><b id="st-queue">0</b></div>
   <div class="line"><span>Check-in-uri</span><b id="st-served">0</b></div>
   <div class="line"><span>Clienti pierduti</span><b id="st-lost">0</b></div>
+  <div class="line" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)">
+    <span>Bacsis (chelner)</span><b id="st-tips" style="color:var(--gold)">$0</b></div>
+  <div class="line"><span>Cereri de servit</span><b id="st-req">0</b></div>
   <div id="legend">
     <span class="dot" style="background:#46c86a"></span>libera
     <span class="dot" style="background:#e0574f;margin-left:10px"></span>ocupata
@@ -140,7 +135,15 @@
 </div>
 
 <div id="perf">-- FPS &middot; -- draw calls</div>
-<div id="hint">Click stanga = roteste &middot; rotita = zoom &middot; click dreapta = deplaseaza &middot; taste 1-3 = etaj &middot; Space = pauza</div>
+<div id="hint">
+  <b style="color:var(--txt)">WASD</b> = misca chelnerul &middot;
+  <b style="color:var(--txt)">E</b> in lift = urca un etaj &middot;
+  <b style="color:var(--txt)">F</b> = camera il urmareste &middot;
+  <b style="color:var(--txt)">1-3</b> = etaj<br>
+  Intra in camera cu <span style="color:var(--gold)">&#9670;</span> deasupra = bacsis &middot;
+  stai in cercul de la receptie = check-in mai rapid &middot;
+  click pe o camera = upgrade
+</div>
 <div id="popups"></div>
 
 <script type="module" src="./src/main.js"></script>

@@ -12,9 +12,16 @@ import {
   state, rooms, initWorld, rollIncomeBucket,
   tryUnlockRoom, tryUpgradeRoom, tryUnlockFloor,
 } from './world.js';
-import { buildScene, setActiveFloor, refreshRooms, refreshDoorColors, pickRoom, updateSelection } from './build.js';
-import { buildGuestMeshes, resetGuests, simulate, renderGuests, guestCount, queueLength } from './guests.js';
-import { initUI, refreshHUD, refreshPerf, refreshRoomPanel, setSpeedButtons, setFloorButtons, updatePopups } from './ui.js';
+import {
+  buildScene, setActiveFloor, refreshRooms, refreshDoorColors, pickRoom, updateSelection,
+  updateMarkers, setDeskRing,
+} from './build.js';
+import {
+  buildGuestMeshes, resetGuests, simulate, renderGuests, guestCount, queueLength,
+  roomHasRequest, activeRequests,
+} from './guests.js';
+import { player, buildPlayer, updatePlayer, renderPlayer, rideTo, canRide } from './player.js';
+import { initUI, refreshHUD, refreshPerf, refreshRoomPanel, setFloorButtons, updatePopups } from './ui.js';
 
 // --- renderer ---------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -54,15 +61,24 @@ initWorld();
 resetGuests();
 buildScene(scene);
 buildGuestMeshes(scene);
+buildPlayer(scene);
 
 // --- stare joc --------------------------------------------------------------
+// Simularea merge mereu in timp real. Ramane o variabila doar pentru hook-ul
+// de debug (__hotel.setSpeed), folosit de testele automate.
 let speed = 1;
-let lastSpeed = 1;
 let acc = 0;
 let secAcc = 0;
 let hudAcc = 0;
 let fpsAcc = 0, fpsFrames = 0, fps = 0;
 let last = performance.now();
+
+// Camera urmareste chelnerul. Porneste oprita, ca sa vezi tot hotelul, si se
+// aprinde singura in momentul in care apesi prima data o tasta de miscare.
+let follow = false;
+const keys = new Set();
+const _tgt = new THREE.Vector3();
+const _delta = new THREE.Vector3();
 
 // --- UI ---------------------------------------------------------------------
 initUI({
@@ -71,11 +87,6 @@ initUI({
       if (!tryUnlockFloor(f)) return;
     }
     focusFloor(f);
-  },
-  onSpeed(s) {
-    speed = s;
-    if (s > 0) lastSpeed = s;
-    setSpeedButtons(speed);
   },
   onRoomAction(r) {
     if (r < 0) return;
@@ -93,6 +104,7 @@ refreshRoomPanel();
 
 /** Schimba etajul vizibil si muta camera pe verticala odata cu el. */
 function focusFloor(f) {
+  follow = false;
   const dy = (f - state.activeFloor) * C.FLOOR_H;
   setActiveFloor(f);
   camera.position.y += dy;
@@ -120,19 +132,43 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   refreshRoomPanel();
 });
 
+const MOVE_KEYS = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+]);
+
+/** Urmatorul etaj deblocat, in sus, cu revenire la parter. */
+function nextUnlockedFloor(from) {
+  for (let i = 1; i <= C.FLOORS; i++) {
+    const f = (from + i) % C.FLOORS;
+    if (state.floorUnlocked[f]) return f;
+  }
+  return from;
+}
+
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') {
+  if (MOVE_KEYS.has(e.code)) {
     e.preventDefault();
-    speed = speed === 0 ? lastSpeed : 0;
-    setSpeedButtons(speed);
+    keys.add(e.code);
+    follow = true;               // prima miscare porneste camera care urmareste
     return;
   }
+  if (e.repeat) return;
+
+  if (e.code === 'KeyF') { follow = !follow; return; }
+  if (e.code === 'KeyE') { if (canRide()) rideTo(nextUnlockedFloor(player.floor)); return; }
+
   const n = Number(e.key);
   if (n >= 1 && n <= C.FLOORS) {
     const f = n - 1;
-    if (state.floorUnlocked[f]) focusFloor(f);
+    if (!state.floorUnlocked[f]) return;
+    // In lift tastele de etaj te duc acolo; altfel doar muta privirea.
+    if (canRide()) rideTo(f);
+    else focusFloor(f);
   }
 });
+
+window.addEventListener('keyup', (e) => keys.delete(e.code));
+window.addEventListener('blur', () => keys.clear());
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -149,7 +185,8 @@ window.__hotel = {
   unlockRoom: (r) => tryUnlockRoom(r),
   upgradeRoom: (r) => tryUpgradeRoom(r),
   focusFloor,
-  setSpeed(s) { speed = s; if (s > 0) lastSpeed = s; setSpeedButtons(s); },
+  player,
+  setSpeed(s) { speed = s; },
 };
 
 // --- bucla ------------------------------------------------------------------
@@ -172,11 +209,31 @@ function frame(now) {
     if (steps === C.MAX_STEPS) acc = 0;      // nu recupera la infinit
   }
 
+  // Chelnerul se misca in acelasi timp cu simularea: la 4x merge si el 4x,
+  // altfel n-ar mai apuca sa raspunda la cereri.
+  updatePlayer(Math.min(dt, 0.1) * speed, camera, keys);
+
+  // Camera urmareste chelnerul si sare pe etajul lui cand ia liftul.
+  if (follow) {
+    if (state.activeFloor !== player.floor) {
+      setActiveFloor(player.floor);
+      setFloorButtons();
+      refreshRoomPanel();
+    }
+    _tgt.set(player.x, player.floor * C.FLOOR_H, player.z);
+    _delta.subVectors(_tgt, controls.target).multiplyScalar(Math.min(1, dt * 4));
+    controls.target.add(_delta);
+    camera.position.add(_delta);
+  }
+
   // Reconstructii vizuale doar cand chiar s-a schimbat ceva.
   if (state.roomsDirty) { refreshRooms(); state.roomsDirty = false; state.doorsDirty = false; }
   else if (state.doorsDirty) { refreshDoorColors(); state.doorsDirty = false; }
 
   renderGuests();
+  renderPlayer();
+  updateMarkers(state.simTime, roomHasRequest);
+  setDeskRing(player.atDesk);
   controls.update();
   renderer.render(scene, camera);
 
@@ -184,7 +241,7 @@ function frame(now) {
 
   // HUD la 5 Hz, contor FPS la 2 Hz.
   hudAcc += dt;
-  if (hudAcc >= 0.2) { hudAcc = 0; refreshHUD(guestCount(), queueLength()); }
+  if (hudAcc >= 0.2) { hudAcc = 0; refreshHUD(guestCount(), queueLength(), activeRequests()); }
   fpsAcc += dt; fpsFrames++;
   if (fpsAcc >= 0.5) {
     fps = Math.round(fpsFrames / fpsAcc);

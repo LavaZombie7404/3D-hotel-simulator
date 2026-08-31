@@ -25,6 +25,9 @@ export const state = {
   servedGuests: 0,
   lostGuests: 0,
   checkouts: 0,
+  tips: 0,              // bacsis incasat de chelner
+  servedRequests: 0,
+  missedRequests: 0,
   floorUnlocked: [true, false, false],
   activeFloor: 0,
   selected: -1,

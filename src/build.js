@@ -15,8 +15,8 @@ import { rooms, state } from './world.js';
 
 export const LEVEL_COLORS = [
   0x30363d, // 0 = blocata
-  0x5a6472, 0x4a7b96, 0x3f9a7d, 0x6fae45,
-  0xd1a02c, 0xe07b2c, 0xd4453f, 0xf2d24b,
+  0x5a6472, 0x4a6d84, 0x44806c, 0x76854e,
+  0xb8912f, 0xc4712f, 0xb04448, 0xdcc055,
 ];
 
 // Mobilier care apare pe masura ce urci nivelul camerei.
@@ -42,6 +42,9 @@ export const gfx = {
   instRoom: new Int32Array(C.ROOMS_PER_FLOOR),   // instanta -> id camera
   roomInst: new Int32Array(C.TOTAL_ROOMS),       // id camera -> instanta (-1)
   selection: null,
+  wallRects: [],            // AABB-uri XZ per etaj (x0,x1,z0,z1,...) pentru coliziuni
+  markers: null,            // semnele de room service deasupra camerelor
+  deskRing: null,           // cercul din fata receptiei
 };
 
 // Obiecte de lucru reutilizate: nicio alocare in buclele de update.
@@ -90,6 +93,7 @@ export function buildScene(scene) {
   for (let f = 0; f < C.FLOORS; f++) gfx.floorGroups.push(buildFloor(scene, f));
   buildRoomInstances(scene);
   buildSelection(scene);
+  buildExtras(scene);
   setActiveFloor(0);
 }
 
@@ -127,9 +131,16 @@ function buildFloor(scene, f) {
 
   const y = f * C.FLOOR_H;              // nivelul podelei
   const wallY = y + C.WALL_H / 2;
-  const slabs = [], walls = [], wood = [];
+  const slabs = [], walls = [], wood = [], lift = [];
+  const rects = [];                     // AABB-uri XZ pentru coliziunea chelnerului
 
-  // Placa de etaj.
+  // Adauga un obstacol: geometria pentru randare + dreptunghiul de coliziune.
+  const solid = (list, w, h, d, x, yy, z) => {
+    list.push(box(w, h, d, x, yy, z));
+    rects.push(x - w / 2, x + w / 2, z - d / 2, z + d / 2);
+  };
+
+  // Placa de etaj (nu e obstacol).
   const x0 = f === 0 ? C.LOBBY_X0 - 0.5 : C.UPPER_X0;
   const x1 = C.CORRIDOR_X1 + 0.5;
   slabs.push(box(x1 - x0, C.SLAB_T, C.BUILD_Z * 2 + 1, (x0 + x1) / 2, y - C.SLAB_T / 2, 0));
@@ -140,30 +151,28 @@ function buildFloor(scene, f) {
 
     // Pereti despartitori intre camere.
     for (let i = 0; i <= C.ROOMS_PER_SIDE; i++) {
-      walls.push(box(C.WALL_T, C.WALL_H, C.ROOM_D, i * C.ROOM_W, wallY, zMid));
+      solid(walls, C.WALL_T, C.WALL_H, C.ROOM_D, i * C.ROOM_W, wallY, zMid);
     }
     // Peretele exterior din spatele camerelor.
-    walls.push(box(C.CORRIDOR_X1 + C.WALL_T, C.WALL_H, C.WALL_T,
-                   C.CORRIDOR_X1 / 2, wallY, sign * C.BUILD_Z));
+    solid(walls, C.CORRIDOR_X1 + C.WALL_T, C.WALL_H, C.WALL_T,
+          C.CORRIDOR_X1 / 2, wallY, sign * C.BUILD_Z);
 
     // Peretele dinspre hol, cu gol de usa in mijlocul fiecarei camere.
     const segW = (C.ROOM_W - C.DOOR_W) / 2;
     for (let i = 0; i < C.ROOMS_PER_SIDE; i++) {
       const cx = i * C.ROOM_W + C.ROOM_W / 2;
-      walls.push(box(segW, C.WALL_H, C.WALL_T, cx - (C.DOOR_W + segW) / 2, wallY, sign * C.HALF_C));
-      walls.push(box(segW, C.WALL_H, C.WALL_T, cx + (C.DOOR_W + segW) / 2, wallY, sign * C.HALF_C));
+      solid(walls, segW, C.WALL_H, C.WALL_T, cx - (C.DOOR_W + segW) / 2, wallY, sign * C.HALF_C);
+      solid(walls, segW, C.WALL_H, C.WALL_T, cx + (C.DOOR_W + segW) / 2, wallY, sign * C.HALF_C);
     }
   }
 
   // Capatul holului.
-  walls.push(box(C.WALL_T, C.WALL_H, C.CORRIDOR_W, C.CORRIDOR_X1, wallY, 0));
+  solid(walls, C.WALL_T, C.WALL_H, C.CORRIDOR_W, C.CORRIDOR_X1, wallY, 0);
 
-  // Cabina liftului de pe acest etaj: 4 stalpi + placa.
-  const lift = [];
+  // Cabina liftului de pe acest etaj: 4 stalpi (obstacole) + placa si grinzi.
   for (let sx = -1; sx <= 1; sx += 2) {
     for (let sz = -1; sz <= 1; sz += 2) {
-      lift.push(box(0.28, C.WALL_H, 0.28,
-                    C.ELEV_X + sx * C.ELEV_HW, wallY, sz * C.ELEV_HW));
+      solid(lift, 0.28, C.WALL_H, 0.28, C.ELEV_X + sx * C.ELEV_HW, wallY, sz * C.ELEV_HW);
     }
   }
   lift.push(box(C.ELEV_HW * 2, 0.12, C.ELEV_HW * 2, C.ELEV_X, y + 0.06, 0));
@@ -176,27 +185,28 @@ function buildFloor(scene, f) {
     const gap = 1.8;
     const segZ = C.BUILD_Z - gap / 2;
     for (const sign of [1, -1]) {
-      walls.push(box(C.WALL_T, C.WALL_H, segZ, C.LOBBY_X0, wallY, sign * (gap / 2 + segZ / 2)));
-      walls.push(box(-C.LOBBY_X0, C.WALL_H, C.WALL_T, C.LOBBY_X0 / 2, wallY, sign * C.BUILD_Z));
+      solid(walls, C.WALL_T, C.WALL_H, segZ, C.LOBBY_X0, wallY, sign * (gap / 2 + segZ / 2));
+      solid(walls, -C.LOBBY_X0, C.WALL_H, C.WALL_T, C.LOBBY_X0 / 2, wallY, sign * C.BUILD_Z);
     }
     // Biroul de receptie + panoul din spate.
-    wood.push(box(C.DESK_W, 1.05, 1.0, C.DESK_X, y + 0.525, C.DESK_Z));
-    wood.push(box(C.DESK_W + 1.4, 2.2, 0.25, C.DESK_X, y + 1.1, C.DESK_Z + 1.3));
+    solid(wood, C.DESK_W, 1.05, 1.0, C.DESK_X, y + 0.525, C.DESK_Z);
+    solid(wood, C.DESK_W + 1.4, 2.2, 0.25, C.DESK_X, y + 1.1, C.DESK_Z + 1.3);
     // Cateva banci in zona de asteptare.
     for (let i = 0; i < 3; i++) {
-      wood.push(box(3.2, 0.45, 0.8, C.LOBBY_X0 + 5.5 + i * 4.2, y + 0.22, -C.BUILD_Z + 1.4));
+      solid(wood, 3.2, 0.45, 0.8, C.LOBBY_X0 + 5.5 + i * 4.2, y + 0.22, -C.BUILD_Z + 1.4);
     }
   } else {
     // Palier / lounge la etajele superioare.
-    walls.push(box(C.WALL_T, C.WALL_H, C.BUILD_Z * 2, C.UPPER_X0, wallY, 0));
+    solid(walls, C.WALL_T, C.WALL_H, C.BUILD_Z * 2, C.UPPER_X0, wallY, 0);
     for (const sign of [1, -1]) {
-      walls.push(box(-C.UPPER_X0, C.WALL_H, C.WALL_T, C.UPPER_X0 / 2, wallY, sign * C.BUILD_Z));
+      solid(walls, -C.UPPER_X0, C.WALL_H, C.WALL_T, C.UPPER_X0 / 2, wallY, sign * C.BUILD_Z);
     }
   }
 
   mergeInto(group, slabs, matSlab);
   mergeInto(group, walls, matWall);
   mergeInto(group, wood, matWood);
+  gfx.wallRects[f] = new Float32Array(rects);
   return group;
 }
 
@@ -341,4 +351,53 @@ export function pickRoom(raycaster) {
   if (hits.length === 0) return -1;
   const id = hits[0].instanceId;
   return id === undefined ? -1 : gfx.instRoom[id];
+}
+
+// --- semnele de room service + cercul de la receptie -------------------------
+
+function buildExtras(scene) {
+  // Un romb auriu care pluteste deasupra camerei care a cerut room service.
+  const geo = new THREE.OctahedronGeometry(0.42);
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffd24b, emissive: 0x6b4c00 });
+  gfx.markers = new THREE.InstancedMesh(geo, mat, C.ROOMS_PER_FLOOR);
+  gfx.markers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  gfx.markers.frustumCulled = false;
+  gfx.markers.count = 0;
+  scene.add(gfx.markers);
+
+  // Cercul din fata receptiei: se aprinde cand chelnerul e in el.
+  const ring = new THREE.RingGeometry(C.DESK_ZONE_R - 0.28, C.DESK_ZONE_R, 40);
+  ring.rotateX(-Math.PI / 2);
+  gfx.deskRing = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({
+    color: 0xffd24b, transparent: true, opacity: 0.22, depthWrite: false,
+  }));
+  gfx.deskRing.position.set(C.DESK_ZONE_X, 0.03, C.DESK_ZONE_Z);
+  scene.add(gfx.deskRing);
+}
+
+/**
+ * Pozitioneaza rombii deasupra camerelor cu cerere activa, de pe etajul vizibil.
+ * `hasRequest(roomId)` e dat din afara ca sa nu legam build.js de guests.js.
+ */
+export function updateMarkers(t, hasRequest) {
+  const f = state.activeFloor;
+  let k = 0;
+  for (let s = 0; s < 2; s++) {
+    for (let i = 0; i < C.ROOMS_PER_SIDE; i++) {
+      const r = f * C.ROOMS_PER_FLOOR + s * C.ROOMS_PER_SIDE + i;
+      if (!hasRequest(r)) continue;
+      _obj.position.set(rooms.cx[r], rooms.cy[r] + 2.5 + Math.sin(t * 3 + r) * 0.18, rooms.cz[r]);
+      _obj.rotation.set(0, t * 1.6, 0);
+      _obj.scale.set(1, 1, 1);
+      _obj.updateMatrix();
+      gfx.markers.setMatrixAt(k++, _obj.matrix);
+    }
+  }
+  gfx.markers.count = k;
+  gfx.markers.instanceMatrix.needsUpdate = true;
+}
+
+export function setDeskRing(active) {
+  gfx.deskRing.visible = state.activeFloor === 0;
+  gfx.deskRing.material.opacity = active ? 0.55 : 0.16;
 }

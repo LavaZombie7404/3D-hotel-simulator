@@ -43,6 +43,11 @@ const gPath   = new Float32Array(N * C.MAX_WP * 3);
 const gPathN  = new Uint8Array(N);   // cate waypoint-uri are traseul
 const gPathI  = new Uint8Array(N);   // waypoint-ul curent
 
+// Room service: fiecare client cazat cere o data chelnerul.
+const gReqWait = new Float32Array(N);  // cat mai are pana cere
+const gReqOn   = new Uint8Array(N);    // are cerere activa?
+const gReqLife = new Float32Array(N);  // cat mai asteapta dupa chelner
+
 // Pool de id-uri libere + lista compacta de oaspeti activi.
 const freeIds = new Int32Array(N);
 let freeCount = 0;
@@ -54,6 +59,7 @@ const queue = [];                     // id-uri, in ordinea sosirii la receptie
 const waitSlots = new Uint8Array(C.MAX_WAIT);
 let serviceTimer = 0;
 let spawnTimer = 1.5;
+let serviceMul = 1;                   // 1 = normal, <1 = chelnerul e la receptie
 
 const TINTS = [
   0xe05c5c, 0xe0a35c, 0xd9d95c, 0x7bd15c, 0x5cd1a8, 0x5cb4e0,
@@ -95,10 +101,43 @@ export function resetGuests() {
   waitSlots.fill(0);
   serviceTimer = 0;
   spawnTimer = 1.5;
+  serviceMul = 1;
+  gReqOn.fill(0);
 }
 
 export function guestCount() { return activeCount; }
 export function queueLength() { return queue.length; }
+
+/** Chelnerul in fata receptiei => check-in mai rapid. */
+export function setServiceBoost(on) { serviceMul = on ? C.SERVICE_BOOST : 1; }
+
+/** Camera asteapta room service? (folosit pentru semnele de deasupra ei) */
+export function roomHasRequest(r) {
+  const g = rooms.occupant[r];
+  return g >= 0 && gReqOn[g] === 1;
+}
+
+export function activeRequests() {
+  let n = 0;
+  for (let a = 0; a < activeCount; a++) if (gReqOn[active[a]]) n++;
+  return n;
+}
+
+/**
+ * Chelnerul a intrat in camera. Daca era o cerere activa, o rezolva si
+ * incaseaza bacsisul. Returneaza suma (0 daca nu era nimic de facut).
+ */
+export function serveRoom(r) {
+  const g = rooms.occupant[r];
+  if (g < 0 || gReqOn[g] !== 1) return 0;
+  gReqOn[g] = 0;
+  const tip = C.TIP_PER_LEVEL * rooms.level[r];
+  earn(tip);
+  state.tips += tip;
+  state.servedRequests++;
+  pushPopup(rooms.cx[r], rooms.cy[r] + 2.4, rooms.cz[r], tip);
+  return tip;
+}
 
 // --- traseu -----------------------------------------------------------------
 
@@ -278,6 +317,7 @@ function checkIn(g) {
 
 function checkOut(g) {
   const r = gRoom[g];
+  gReqOn[g] = 0;
   const amount = payout(rooms.level[r]);
   earn(amount);
   state.checkouts++;
@@ -306,7 +346,7 @@ export function simulate(dt) {
     if (gState[g] === S_TO_QUEUE && arrived(g)) gState[g] = S_QUEUE;
     if (gState[g] === S_QUEUE) {
       serviceTimer += dt;
-      if (serviceTimer >= C.SERVICE_TIME) {
+      if (serviceTimer >= C.SERVICE_TIME * serviceMul) {
         serviceTimer = 0;
         queue.shift();
         checkIn(g);
@@ -347,11 +387,27 @@ export function simulate(dt) {
         break;
 
       case S_TO_ROOM:
-        if (done) { gState[g] = S_STAY; gTimer[g] = C.STAY_TIME; }
+        if (done) {
+          gState[g] = S_STAY;
+          gTimer[g] = C.STAY_TIME;
+          gReqOn[g] = 0;
+          gReqWait[g] = C.REQ_DELAY_MIN + Math.random() * (C.REQ_DELAY_MAX - C.REQ_DELAY_MIN);
+        }
         break;
 
       case S_STAY:
         gTimer[g] -= dt;
+        if (gReqOn[g]) {
+          gReqLife[g] -= dt;
+          if (gReqLife[g] <= 0) { gReqOn[g] = 0; state.missedRequests++; }
+        } else if (gReqWait[g] > 0) {
+          gReqWait[g] -= dt;
+          // O singura cerere per cazare, si numai daca mai are timp sa astepte.
+          if (gReqWait[g] <= 0 && gTimer[g] > C.REQ_TTL * 0.5) {
+            gReqOn[g] = 1;
+            gReqLife[g] = C.REQ_TTL;
+          }
+        }
         if (gTimer[g] <= 0) checkOut(g);
         break;
 

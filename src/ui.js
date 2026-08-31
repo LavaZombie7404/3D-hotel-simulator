@@ -31,12 +31,13 @@ export function initUI(cbs) {
   el.money = $('money');
   el.income = $('income');
   el.floors = $('floors');
-  el.speeds = $('speeds');
   el.guests = $('st-guests');
   el.occ = $('st-occ');
   el.queue = $('st-queue');
   el.served = $('st-served');
   el.lost = $('st-lost');
+  el.tips = $('st-tips');
+  el.req = $('st-req');
   el.roomEmpty = $('room-empty');
   el.roomInfo = $('room-info');
   el.roomTitle = $('room-title');
@@ -56,11 +57,6 @@ export function initUI(cbs) {
     el.floorBtns.push(b);
   }
 
-  el.speeds.addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (b) handlers.onSpeed(Number(b.dataset.speed));
-  });
-
   el.roomAction.addEventListener('click', () => handlers.onRoomAction(state.selected));
 
   for (let i = 0; i < POP_MAX; i++) {
@@ -71,10 +67,6 @@ export function initUI(cbs) {
     popPool.push(d);
     popLife[i] = 0;
   }
-}
-
-export function setSpeedButtons(speed) {
-  for (const b of el.speeds.children) b.classList.toggle('on', Number(b.dataset.speed) === speed);
 }
 
 export function setFloorButtons() {
@@ -147,7 +139,7 @@ export function refreshRoomPanel() {
 }
 
 /** Actualizarea "lenta" a HUD-ului, apelata de ~5 ori pe secunda. */
-export function refreshHUD(guests, queueLen) {
+export function refreshHUD(guests, queueLen, requests) {
   el.money.textContent = '$' + Math.floor(state.money).toLocaleString('ro-RO');
   el.income.textContent = '$' + Math.round(incomePerMinute()).toLocaleString('ro-RO') + ' / min';
   el.guests.textContent = guests;
@@ -155,6 +147,8 @@ export function refreshHUD(guests, queueLen) {
   el.queue.textContent = queueLen;
   el.served.textContent = state.servedGuests;
   el.lost.textContent = state.lostGuests;
+  el.tips.textContent = '$' + Math.floor(state.tips).toLocaleString('ro-RO');
+  el.req.textContent = requests;
   setFloorButtons();
   refreshRoomPanel();
 }

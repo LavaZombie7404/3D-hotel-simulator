@@ -37,10 +37,10 @@ const snap = () => page.evaluate(() => ({
 console.log('start  ', await snap());
 await page.screenshot({ path: `${OUT}/01-start.png` });
 
-// Viteza 4x si lasam hotelul sa functioneze.
-await page.click('button[data-speed="4"]');
+// Accelerat prin hook-ul de debug (nu mai exista control de viteza in UI).
+await page.evaluate(() => window.__hotel.setSpeed(4));
 await page.waitForTimeout(12000);
-console.log('dupa 4x', await snap());
+console.log('accelerat', await snap());
 await page.screenshot({ path: `${OUT}/02-running.png` });
 
 // Deblocam si upgradam prin click pe camere: scanam puncte pana nimerim una.

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// Starea logica a hotelului: camere (structure-of-arrays), bani, economie.
-// Fara obiecte per-camera => zero garbage collection in bucla de simulare.
+// The hotel's logical state: rooms (structure-of-arrays), money, economy.
+// No per-room objects => zero garbage collection in the simulation loop.
 // ---------------------------------------------------------------------------
 import * as C from './config.js';
 
@@ -8,14 +8,14 @@ const N = C.TOTAL_ROOMS;
 
 export const rooms = {
   floor:    new Uint8Array(N),
-  side:     new Uint8Array(N),   // 0 = nord (+Z), 1 = sud (-Z)
-  index:    new Uint8Array(N),   // pozitia pe hol, 0..ROOMS_PER_SIDE-1
-  level:    new Uint8Array(N),   // 0 = blocata, 1..MAX_LEVEL = deblocata
-  occupant: new Int16Array(N),   // id-ul oaspetelui, -1 = libera
-  cx:       new Float32Array(N), // centrul camerei
-  cy:       new Float32Array(N), // nivelul podelei
+  side:     new Uint8Array(N),   // 0 = north (+Z), 1 = south (-Z)
+  index:    new Uint8Array(N),   // position along the corridor, 0..ROOMS_PER_SIDE-1
+  level:    new Uint8Array(N),   // 0 = locked, 1..MAX_LEVEL = unlocked
+  occupant: new Int16Array(N),   // guest id, -1 = free
+  cx:       new Float32Array(N), // room centre
+  cy:       new Float32Array(N), // floor level
   cz:       new Float32Array(N),
-  doorZ:    new Float32Array(N), // Z-ul usii (marginea holului)
+  doorZ:    new Float32Array(N), // Z of the door (corridor edge)
 };
 
 export const state = {
@@ -25,24 +25,24 @@ export const state = {
   servedGuests: 0,
   lostGuests: 0,
   checkouts: 0,
-  tips: 0,              // bacsis incasat de chelner
+  tips: 0,              // tips collected by the waiter
   servedRequests: 0,
   missedRequests: 0,
-  boosters: 0,          // +25% incasari fiecare; o renastere da unul
-  rebirths: 0,          // renasteri de la ultimul prestigiu
-  maxRebirths: 0,       // maximul atins vreodata — de el depind etajele noi
+  boosters: 0,          // +25% income each; one rebirth grants one
+  rebirths: 0,          // rebirths since the last prestige
+  maxRebirths: 0,       // highest ever reached — the new floors depend on it
   prestige: 0,
-  lifetimeEarned: 0,    // castig cumulat peste toate renasterile
+  lifetimeEarned: 0,    // cumulative earnings across every rebirth
   floorUnlocked: [true, false, false, false, false, false],
   activeFloor: 0,
   selected: -1,
-  roomsDirty: true,     // cere reconstructia instantelor vizuale (nivel/deblocare)
-  doorsDirty: true,     // cere doar reimprospatarea culorilor usilor (ocupare)
+  roomsDirty: true,     // asks for a rebuild of the visual instances (level/unlock)
+  doorsDirty: true,     // asks only for a refresh of the door colours (occupancy)
   simTime: 0,
 };
 
-// Coada de texte flotante "+$" produsa de simulare si consumata de UI.
-// Dimensiune fixa => fara alocari in bucla de simulare.
+// Queue of floating "+$" labels, produced by the simulation and drained by
+// the UI. Fixed size => no allocations in the simulation loop.
 const POPUP_CAP = 32;
 export const popupQueue = {
   x: new Float32Array(POPUP_CAP),
@@ -62,7 +62,7 @@ export function pushPopup(x, y, z, amount) {
   popupQueue.amount[i] = amount;
 }
 
-// Venit pe ultimele 60s, in bucketi de cate o secunda (ring buffer, fara alocari).
+// Income over the last 60s, in one-second buckets (ring buffer, no allocations).
 const incomeRing = new Float32Array(60);
 let incomeSlot = 0;
 let incomeAcc = 0;
@@ -89,12 +89,12 @@ export function initWorld() {
       }
     }
   }
-  // Doua camere gratuite la start, ca sa poata porni afacerea.
+  // Two free rooms at the start, so the business can get going.
   rooms.level[roomId(0, 0, 0)] = 1;
   rooms.level[roomId(0, 1, 0)] = 1;
 }
 
-// --- Economie ---------------------------------------------------------------
+// --- Economy ---------------------------------------------------------------
 
 export function unlockedCount() {
   let n = 0;
@@ -116,28 +116,28 @@ export function upgradeCost(level) {
   return Math.round(C.UPGRADE_BASE * Math.pow(C.UPGRADE_GROWTH, level - 1));
 }
 
-// --- bonusul dat de stele ---------------------------------------------------
+// --- the booster bonus ---------------------------------------------------
 
-/** Multiplicatorul permanent adus de boosteri. */
+/** The permanent multiplier the boosters give. */
 export function incomeMult() {
   return 1 + state.boosters * C.BOOST_BONUS;
 }
 
 /**
- * Cat de repede curge fluxul de clienti (sosiri + receptie).
- * Creste cu boosterii: fara asta, etajele deblocate tarziu ar sta goale,
- * pentru ca limita reala n-ar fi numarul de camere, ci ghiseul.
+ * How fast guests flow through the hotel (arrivals + reception).
+ * It grows with the boosters: without that, floors unlocked late would sit
+ * empty, because the real limit would not be the room count but the desk.
  */
 export function flowMult() {
   return Math.min(C.FLOW_MAX, 1 + state.boosters * C.FLOW_PER_BOOST);
 }
 
-/** Cat dureaza un check-in acum. */
+/** How long a check-in takes right now. */
 export function serviceTime() {
   return C.SERVICE_TIME / flowMult();
 }
 
-/** Etajul f exista deja in cladire? (etajele de sus apar dupa renasteri) */
+/** Does floor f exist in the building yet? (upper floors appear after rebirths) */
 export function floorAvailable(f) {
   return state.maxRebirths >= C.FLOOR_REBIRTH_REQ[f];
 }
@@ -146,17 +146,17 @@ export function withBonus(v) {
   return Math.round(v * incomeMult());
 }
 
-/** Cat plateste un client la check-out. Include deja bonusul de stele. */
+/** What a guest pays at check-out. Already includes the booster bonus. */
 export function payout(level) {
   return withBonus(C.PAY_PER_LEVEL * level);
 }
 
-/** Bacsisul pentru room service, cu bonus. */
+/** The room service tip, with the bonus applied. */
 export function tipFor(level) {
   return withBonus(C.TIP_PER_LEVEL * level);
 }
 
-/** Taxa de check-in, cu bonus. */
+/** The check-in fee, with the bonus applied. */
 export function checkInFee() {
   return withBonus(C.CHECK_IN_FEE);
 }
@@ -201,7 +201,7 @@ export function tryUnlockFloor(f) {
   return true;
 }
 
-// Oaspetii prefera camera cea mai buna libera (nivel maxim).
+// Guests prefer the best free room (highest level).
 export function findBestFreeRoom() {
   let best = -1, bestLevel = 0;
   for (let r = 0; r < N; r++) {
@@ -218,7 +218,7 @@ export function anyFreeRoom() {
   return false;
 }
 
-// Intervalul dintre sosiri scade pe masura ce hotelul creste.
+// The gap between arrivals shrinks as the hotel grows.
 export function arrivalInterval() {
   const n = unlockedCount();
   const t = C.ARRIVE_MAX / (1 + n * C.ARRIVE_PER_ROOM);
@@ -226,9 +226,9 @@ export function arrivalInterval() {
   return Math.max(floor, Math.min(C.ARRIVE_MAX, t));
 }
 
-// --- renastere --------------------------------------------------------------
+// --- rebirth --------------------------------------------------------------
 
-/** Cat trebuie sa castigi intr-o rulare ca sa poti renaste. */
+/** How much you must earn in a run before you can rebirth. */
 export function rebirthGoal() {
   return Math.round(C.REBIRTH_BASE * (1 + state.rebirths * C.REBIRTH_STEP));
 }
@@ -241,7 +241,7 @@ export function canPrestige() {
   return state.rebirths >= C.PRESTIGE_REBIRTHS;
 }
 
-/** Urmatorul etaj care apare, si dupa cate renasteri. -1 daca s-au deschis toate. */
+/** The next floor to appear and after how many rebirths. null if all are open. */
 export function nextFloorUnlock() {
   for (let f = 0; f < C.FLOORS; f++) {
     if (!floorAvailable(f)) return { floor: f, at: C.FLOOR_REBIRTH_REQ[f] };
@@ -249,7 +249,7 @@ export function nextFloorUnlock() {
   return null;
 }
 
-/** Reseteaza rularea curenta, pastrand ce e permanent (boosteri, prestigiu). */
+/** Reset the current run, keeping what is permanent (boosters, prestige). */
 function resetRun() {
   state.money = C.START_MONEY + Math.round(C.BOOST_START_MONEY * Math.sqrt(state.boosters));
   state.totalEarned = 0;
@@ -279,8 +279,8 @@ function resetRun() {
 }
 
 /**
- * Renaste: pierzi progresul rularii si primesti un booster permanent.
- * Returneaza true daca s-a intamplat.
+ * Rebirth: you lose the run's progress and gain a permanent booster.
+ * Returns true if it actually happened.
  */
 export function doRebirth() {
   if (!canRebirth()) return false;
@@ -293,9 +293,9 @@ export function doRebirth() {
 }
 
 /**
- * Prestigiu: dupa PRESTIGE_REBIRTHS renasteri, inmulteste cu 10 boosterii pe
- * care ii ai deja si porneste numaratoarea renasterilor de la zero. Etajele
- * castigate raman, pentru ca depind de maxRebirths.
+ * Prestige: after PRESTIGE_REBIRTHS rebirths, multiply the boosters you already
+ * have by 10 and restart the rebirth counter from zero. The floors you earned
+ * stay, because they depend on maxRebirths.
  */
 export function doPrestige() {
   if (!canPrestige()) return false;
@@ -307,7 +307,7 @@ export function doPrestige() {
   return true;
 }
 
-// Apelat o data pe secunda de simulare.
+// Called once per simulated second.
 export function rollIncomeBucket() {
   incomeRing[incomeSlot] = incomeAcc;
   incomeAcc = 0;
@@ -317,5 +317,5 @@ export function rollIncomeBucket() {
 export function incomePerMinute() {
   let sum = 0;
   for (let i = 0; i < incomeRing.length; i++) sum += incomeRing[i];
-  return sum; // ring-ul acopera exact 60s
+  return sum; // the ring covers exactly 60s
 }

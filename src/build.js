@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-// Constructia scenei 3D.
+// Building the 3D scene.
 //
-// Strategie de performanta:
-//   * Toata arhitectura statica a unui etaj e fuzionata in 3 geometrii
-//     (placa / pereti / lemn) => 3 draw call-uri per etaj, matrici inghetate.
-//   * Se randeaza doar etajul activ; celelalte au .visible = false.
-//   * Podelele, usile si mobilierul camerelor sunt InstancedMesh-uri
-//     reconstruite DOAR cand se schimba starea camerelor, nu in fiecare cadru.
+// Performance strategy:
+//   * All the static architecture of a floor is merged into 3 geometries
+//     (slab / walls / wood) => 3 draw calls per floor, with frozen matrices.
+//   * Only the active floor is rendered; the rest have .visible = false.
+//   * Room floors, doors and furniture are InstancedMeshes rebuilt ONLY when
+//     the room state changes, not every frame.
 // ---------------------------------------------------------------------------
 import * as THREE from '../vendor/three.module.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
@@ -14,14 +14,14 @@ import * as C from './config.js';
 import { rooms, state } from './world.js';
 
 export const LEVEL_COLORS = [
-  0x30363d, // 0 = blocata
+  0x30363d, // 0 = locked
   0x5a6472, 0x4a6d84, 0x44806c, 0x76854e,
   0xb8912f, 0xc4712f, 0xb04448, 0xdcc055,
 ];
 
-// Mobilier care apare pe masura ce urci nivelul camerei.
-// Offset-urile sunt in coordonate locale camerei: dx = de-a lungul holului,
-// dz = adancime dinspre usa spre peretele din spate.
+// Furniture that shows up as you raise the room level.
+// Offsets are in room-local coordinates: dx = along the corridor,
+// dz = depth from the door towards the back wall.
 const FURNITURE = [
   { name: 'pat',      minLevel: 1, color: 0xb8c4d4, w: 2.0, h: 0.50, d: 2.6, dx: -1.4, dy: 0.25, dz: 4.3 },
   { name: 'noptiera', minLevel: 2, color: 0x8b6f47, w: 0.6, h: 0.55, d: 0.6, dx: 0.0,  dy: 0.28, dz: 5.4 },
@@ -34,24 +34,24 @@ const FURNITURE = [
 
 export const gfx = {
   scene: null,
-  floorGroups: [],          // un Group per etaj (arhitectura statica)
-  always: null,             // ce se vede mereu (teren, drum, lift)
-  tiles: null,              // InstancedMesh podele camere
-  doors: null,              // InstancedMesh usi
-  furniture: [],            // InstancedMesh per tip de mobilier
-  instRoom: new Int32Array(C.ROOMS_PER_FLOOR),   // instanta -> id camera
-  roomInst: new Int32Array(C.TOTAL_ROOMS),       // id camera -> instanta (-1)
+  floorGroups: [],          // one Group per floor (static architecture)
+  always: null,             // always visible (ground, road)
+  tiles: null,              // InstancedMesh of room floors
+  doors: null,              // InstancedMesh of doors
+  furniture: [],            // one InstancedMesh per furniture type
+  instRoom: new Int32Array(C.ROOMS_PER_FLOOR),   // instance -> room id
+  roomInst: new Int32Array(C.TOTAL_ROOMS),       // room id -> instance (-1)
   selection: null,
-  wallRects: [],            // AABB-uri XZ per etaj (x0,x1,z0,z1,...) pentru coliziuni
-  markers: null,            // semnele de room service deasupra camerelor
-  deskRing: null,           // cercul din fata receptiei
+  wallRects: [],            // XZ AABBs per floor (x0,x1,z0,z1,...) for collisions
+  markers: null,            // room service markers above the rooms
+  deskRing: null,           // the circle in front of the reception desk
 };
 
-// Obiecte de lucru reutilizate: nicio alocare in buclele de update.
+// Reused scratch objects: no allocations in the update loops.
 const _obj = new THREE.Object3D();
 const _col = new THREE.Color();
 
-// --- helpers geometrie ------------------------------------------------------
+// --- geometry helpers ------------------------------------------------------
 
 function box(w, h, d, x, y, z) {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -64,24 +64,24 @@ function mergeInto(group, list, material) {
   const merged = mergeGeometries(list, false);
   for (const g of list) g.dispose();
   const mesh = new THREE.Mesh(merged, material);
-  mesh.matrixAutoUpdate = false;   // geometrie statica: nu recalcula matricea
+  mesh.matrixAutoUpdate = false;   // static geometry: do not recompute the matrix
   mesh.updateMatrix();
   group.add(mesh);
   return mesh;
 }
 
-// --- materiale partajate ----------------------------------------------------
-// MeshLambertMaterial e mult mai ieftin decat Standard si arata bine cu
-// iluminare hemisferica + directionala.
+// --- shared materials -------------------------------------------------------
+// MeshLambertMaterial is far cheaper than Standard and looks fine with
+// hemisphere + directional lighting.
 const matSlab   = new THREE.MeshLambertMaterial({ color: 0x4a5058 });
 const matWall   = new THREE.MeshLambertMaterial({ color: 0xd9d4c9 });
 const matWood   = new THREE.MeshLambertMaterial({ color: 0x8b6f47 });
 const matGround = new THREE.MeshLambertMaterial({ color: 0x27331f });
 const matRoad   = new THREE.MeshLambertMaterial({ color: 0x2a2c30 });
 const matSteel  = new THREE.MeshLambertMaterial({ color: 0x9aa3ad });
-// Culoarea per-instanta vine din InstancedMesh.instanceColor si se inmulteste
-// cu .color al materialului; NU se pune vertexColors (ar cere un atribut
-// 'color' in geometrie, care lipseste => totul ar iesi negru).
+// The per-instance colour comes from InstancedMesh.instanceColor and is
+// multiplied by the material's .color; do NOT set vertexColors (it would want
+// a 'color' attribute in the geometry, which is missing => everything black).
 const matTile   = new THREE.MeshLambertMaterial({ color: 0xffffff });
 const matDoor   = new THREE.MeshLambertMaterial({ color: 0xffffff });
 
@@ -97,7 +97,7 @@ export function buildScene(scene) {
   setActiveFloor(0);
 }
 
-// --- teren, drum, lift ------------------------------------------------------
+// --- ground, road, lift ------------------------------------------------------
 
 function buildEnvironment(scene) {
   const g = new THREE.Group();
@@ -111,7 +111,7 @@ function buildEnvironment(scene) {
   ground.updateMatrix();
   g.add(ground);
 
-  // Drumul de acces spre intrare.
+  // The access road up to the entrance.
   const road = new THREE.Mesh(new THREE.PlaneGeometry(28, 7), matRoad);
   road.rotation.x = -Math.PI / 2;
   road.position.set(C.LOBBY_X0 - 14, -C.SLAB_T - 0.01, 0);
@@ -119,28 +119,28 @@ function buildEnvironment(scene) {
   road.updateMatrix();
   g.add(road);
 
-  // Liftul se construieste per etaj (vezi buildFloor): altfel s-ar vedea
-  // stalpii si placile celorlalte etaje peste etajul activ.
+  // The lift is built per floor (see buildFloor): otherwise the posts and
+  // plates of the other floors would show through the active one.
 }
 
-// --- arhitectura unui etaj --------------------------------------------------
+// --- architecture of one floor --------------------------------------------------
 
 function buildFloor(scene, f) {
   const group = new THREE.Group();
   scene.add(group);
 
-  const y = f * C.FLOOR_H;              // nivelul podelei
+  const y = f * C.FLOOR_H;              // floor level
   const wallY = y + C.WALL_H / 2;
   const slabs = [], walls = [], wood = [], lift = [];
-  const rects = [];                     // AABB-uri XZ pentru coliziunea chelnerului
+  const rects = [];                     // XZ AABBs for the waiter's collisions
 
-  // Adauga un obstacol: geometria pentru randare + dreptunghiul de coliziune.
+  // Add an obstacle: geometry for rendering + its collision rectangle.
   const solid = (list, w, h, d, x, yy, z) => {
     list.push(box(w, h, d, x, yy, z));
     rects.push(x - w / 2, x + w / 2, z - d / 2, z + d / 2);
   };
 
-  // Placa de etaj (nu e obstacol).
+  // The floor slab (not an obstacle).
   const x0 = f === 0 ? C.LOBBY_X0 - 0.5 : C.UPPER_X0;
   const x1 = C.CORRIDOR_X1 + 0.5;
   slabs.push(box(x1 - x0, C.SLAB_T, C.BUILD_Z * 2 + 1, (x0 + x1) / 2, y - C.SLAB_T / 2, 0));
@@ -149,15 +149,15 @@ function buildFloor(scene, f) {
     const sign = s === 0 ? 1 : -1;
     const zMid = sign * (C.HALF_C + C.ROOM_D / 2);
 
-    // Pereti despartitori intre camere.
+    // Partition walls between rooms.
     for (let i = 0; i <= C.ROOMS_PER_SIDE; i++) {
       solid(walls, C.WALL_T, C.WALL_H, C.ROOM_D, i * C.ROOM_W, wallY, zMid);
     }
-    // Peretele exterior din spatele camerelor.
+    // The outer wall behind the rooms.
     solid(walls, C.CORRIDOR_X1 + C.WALL_T, C.WALL_H, C.WALL_T,
           C.CORRIDOR_X1 / 2, wallY, sign * C.BUILD_Z);
 
-    // Peretele dinspre hol, cu gol de usa in mijlocul fiecarei camere.
+    // The corridor-facing wall, with a doorway gap in the middle of each room.
     const segW = (C.ROOM_W - C.DOOR_W) / 2;
     for (let i = 0; i < C.ROOMS_PER_SIDE; i++) {
       const cx = i * C.ROOM_W + C.ROOM_W / 2;
@@ -166,10 +166,11 @@ function buildFloor(scene, f) {
     }
   }
 
-  // Capatul holului.
+  // The end of the corridor.
   solid(walls, C.WALL_T, C.WALL_H, C.CORRIDOR_W, C.CORRIDOR_X1, wallY, 0);
 
-  // Cabina liftului de pe acest etaj: 4 stalpi (obstacole) + placa si grinzi.
+  // The lift shaft at this floor: 4 posts (obstacles) + the top beams.
+  // The floor itself comes with the cabin, which travels (see elevator.js).
   for (let sx = -1; sx <= 1; sx += 2) {
     for (let sz = -1; sz <= 1; sz += 2) {
       solid(lift, 0.28, C.WALL_H, 0.28, C.ELEV_X + sx * C.ELEV_HW, wallY, sz * C.ELEV_HW);
@@ -180,22 +181,22 @@ function buildFloor(scene, f) {
   mergeInto(group, lift, matSteel);
 
   if (f === 0) {
-    // Lobby: perete frontal cu gol de intrare + pereti laterali.
+    // Lobby: front wall with an entrance gap + side walls.
     const gap = 1.8;
     const segZ = C.BUILD_Z - gap / 2;
     for (const sign of [1, -1]) {
       solid(walls, C.WALL_T, C.WALL_H, segZ, C.LOBBY_X0, wallY, sign * (gap / 2 + segZ / 2));
       solid(walls, -C.LOBBY_X0, C.WALL_H, C.WALL_T, C.LOBBY_X0 / 2, wallY, sign * C.BUILD_Z);
     }
-    // Biroul de receptie + panoul din spate.
+    // The reception desk + the panel behind it.
     solid(wood, C.DESK_W, 1.05, 1.0, C.DESK_X, y + 0.525, C.DESK_Z);
     solid(wood, C.DESK_W + 1.4, 2.2, 0.25, C.DESK_X, y + 1.1, C.DESK_Z + 1.3);
-    // Cateva banci in zona de asteptare.
+    // A few benches in the waiting area.
     for (let i = 0; i < 3; i++) {
       solid(wood, 3.2, 0.45, 0.8, C.LOBBY_X0 + 5.5 + i * 4.2, y + 0.22, -C.BUILD_Z + 1.4);
     }
   } else {
-    // Palier / lounge la etajele superioare.
+    // Landing / lounge on the upper floors.
     solid(walls, C.WALL_T, C.WALL_H, C.BUILD_Z * 2, C.UPPER_X0, wallY, 0);
     for (const sign of [1, -1]) {
       solid(walls, -C.UPPER_X0, C.WALL_H, C.WALL_T, C.UPPER_X0 / 2, wallY, sign * C.BUILD_Z);
@@ -209,7 +210,7 @@ function buildFloor(scene, f) {
   return group;
 }
 
-// --- instante pentru camere -------------------------------------------------
+// --- room instances -------------------------------------------------
 
 function buildRoomInstances(scene) {
   const n = C.ROOMS_PER_FLOOR;
@@ -229,7 +230,7 @@ function buildRoomInstances(scene) {
 
   for (const def of FURNITURE) {
     const geo = new THREE.BoxGeometry(def.w, def.h, def.d);
-    geo.translate(def.dx, def.dy, def.dz);   // offset local camerei, baked in
+    geo.translate(def.dx, def.dy, def.dz);   // room-local offset, baked in
     const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: def.color }), n);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false;
@@ -257,8 +258,8 @@ export function setActiveFloor(f) {
 }
 
 /**
- * Reconstruieste instantele pentru etajul activ. Apelat doar la schimbarea
- * etajului sau a starii unei camere (deblocare / upgrade), nu in fiecare cadru.
+ * Rebuilds the instances for the active floor. Called only when the floor or a
+ * room's state changes (unlock / upgrade), never every frame.
  */
 export function refreshRooms() {
   const f = state.activeFloor;
@@ -271,7 +272,7 @@ export function refreshRooms() {
       gfx.instRoom[n] = r;
       gfx.roomInst[r] = n;
 
-      // Podeaua camerei, colorata dupa nivel.
+      // The room floor, coloured by level.
       _obj.position.set(rooms.cx[r], rooms.cy[r] + 0.015, rooms.cz[r]);
       _obj.rotation.set(0, 0, 0);
       _obj.scale.set(C.ROOM_W - C.WALL_T, 1, C.ROOM_D - C.WALL_T);
@@ -280,7 +281,7 @@ export function refreshRooms() {
       _col.setHex(LEVEL_COLORS[rooms.level[r]]);
       gfx.tiles.setColorAt(n, _col);
 
-      // Usa.
+      // The door.
       _obj.position.set(rooms.cx[r], rooms.cy[r] + 1.05, rooms.doorZ[r]);
       _obj.scale.set(1, 1, 1);
       _obj.updateMatrix();
@@ -308,7 +309,7 @@ function refreshFurniture() {
       for (let i = 0; i < C.ROOMS_PER_SIDE; i++) {
         const r = f * C.ROOMS_PER_FLOOR + s * C.ROOMS_PER_SIDE + i;
         if (rooms.level[r] < entry.def.minLevel) continue;
-        // Ancora = usa; rotatia cu PI oglindeste camerele de pe latura sudica.
+        // Anchor = the door; rotating by PI mirrors the rooms on the south side.
         _obj.position.set(rooms.cx[r], rooms.cy[r], rooms.doorZ[r]);
         _obj.rotation.set(0, rooms.side[r] === 0 ? 0 : Math.PI, 0);
         _obj.scale.set(1, 1, 1);
@@ -321,7 +322,7 @@ function refreshFurniture() {
   }
 }
 
-/** Verde = libera, rosu = ocupata, gri = blocata. Doar culori, fara rebuild. */
+/** Green = free, red = occupied, grey = locked. Colours only, no rebuild. */
 export function refreshDoorColors() {
   const n = gfx.doors.count;
   for (let k = 0; k < n; k++) {
@@ -344,7 +345,7 @@ export function updateSelection() {
   gfx.selection.position.set(rooms.cx[r], rooms.cy[r] + C.WALL_H / 2, rooms.cz[r]);
 }
 
-/** Id-ul camerei de sub cursor sau -1. Rulat doar la click, nu per cadru. */
+/** The room id under the cursor, or -1. Run on click only, never per frame. */
 export function pickRoom(raycaster) {
   const hits = raycaster.intersectObjects([gfx.tiles, gfx.doors], false);
   if (hits.length === 0) return -1;
@@ -352,10 +353,10 @@ export function pickRoom(raycaster) {
   return id === undefined ? -1 : gfx.instRoom[id];
 }
 
-// --- semnele de room service + cercul de la receptie -------------------------
+// --- room service markers + the reception circle -------------------------
 
 function buildExtras(scene) {
-  // Un romb auriu care pluteste deasupra camerei care a cerut room service.
+  // A gold diamond floating above the room that rang for room service.
   const geo = new THREE.OctahedronGeometry(0.42);
   const mat = new THREE.MeshLambertMaterial({ color: 0xffd24b, emissive: 0x6b4c00 });
   gfx.markers = new THREE.InstancedMesh(geo, mat, C.ROOMS_PER_FLOOR);
@@ -364,7 +365,7 @@ function buildExtras(scene) {
   gfx.markers.count = 0;
   scene.add(gfx.markers);
 
-  // Cercul din fata receptiei: se aprinde cand chelnerul e in el.
+  // The circle in front of the desk: it lights up when the waiter is in it.
   const ring = new THREE.RingGeometry(C.DESK_ZONE_R - 0.28, C.DESK_ZONE_R, 40);
   ring.rotateX(-Math.PI / 2);
   gfx.deskRing = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({
@@ -375,8 +376,8 @@ function buildExtras(scene) {
 }
 
 /**
- * Pozitioneaza rombii deasupra camerelor cu cerere activa, de pe etajul vizibil.
- * `hasRequest(roomId)` e dat din afara ca sa nu legam build.js de guests.js.
+ * Places the diamonds above rooms with an active request, on the visible floor.
+ * `hasRequest(roomId)` is injected so build.js does not depend on guests.js.
  */
 export function updateMarkers(t, hasRequest) {
   const f = state.activeFloor;

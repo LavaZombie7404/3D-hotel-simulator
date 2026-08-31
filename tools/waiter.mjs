@@ -1,5 +1,5 @@
-// Testul chelnerului: miscare, coliziune cu peretii, lift, bacsis din room
-// service si accelerarea check-in-ului cand stai la receptie.
+// Waiter test: movement, wall collisions, the lift, room service tips and the
+// faster check-in you get by standing at the desk.
 //   node tools/waiter.mjs [url]
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -37,57 +37,57 @@ const check = (name, ok, detail) => {
   if (!ok) failures++;
 };
 
-// Deblocam tot, ca sa avem clienti in camere pe toate etajele.
+// Unlock everything, so there are guests in rooms on every floor.
 await page.evaluate(() => {
   const h = window.__hotel;
-  h.grantRebirths(20);      // ca sa existe si etajele de sus
+  h.grantRebirths(20);      // so the upper floors exist at all
   h.give(5000000);
   h.unlockAll(3);
   h.setSpeed(2);
 });
 
-// --- 1. miscarea ------------------------------------------------------------
+// --- 1. movement ------------------------------------------------------------
 const before = await pos();
 await page.keyboard.down('d');
 await page.waitForTimeout(700);
 await page.keyboard.up('d');
 await page.waitForTimeout(150);
 const after = await pos();
-check('chelnerul se misca cu tastele', Math.hypot(after.x - before.x, after.z - before.z) > 1.5,
+check('the waiter moves with the keys', Math.hypot(after.x - before.x, after.z - before.z) > 1.5,
       `${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
 
-// --- 2. coliziunea cu peretii ----------------------------------------------
-// Il punem langa peretele din spatele camerelor si impingem in el.
+// --- 2. wall collisions -----------------------------------------------------
+// Put him next to the wall behind the rooms and push into it.
 await page.evaluate(() => {
   const p = window.__hotel.player;
   p.x = 9; p.z = 7.5; p.floor = 0;
 });
-// Camera priveste dinspre +Z, deci "jos" pe ecran inseamna +Z: intra in
-// peretele exterior din spatele camerelor de pe latura nordica.
+// The camera looks from +Z, so screen "down" means +Z: walk into the outer
+// wall behind the rooms on the north side.
 await page.keyboard.down('ArrowDown');
 await page.waitForTimeout(1400);
 await page.keyboard.up('ArrowDown');
 await page.waitForTimeout(150);
 const wall = await pos();
-// BUILD_Z = 9, deci nu trebuie sa treaca dincolo de ~8.6
-check('nu trece prin peretele exterior', wall.z > 7 && wall.z < 8.8, `z = ${wall.z}`);
+// BUILD_Z = 9, so he must not get past about 8.6
+check('does not pass through the outer wall', wall.z > 7 && wall.z < 8.8, `z = ${wall.z}`);
 
-// --- 3. liftul --------------------------------------------------------------
+// --- 3. the lift ------------------------------------------------------------
 await page.evaluate(() => {
   const p = window.__hotel.player;
-  p.x = -2.6; p.z = 0; p.floor = 0;      // in cabina liftului
+  p.x = -2.6; p.z = 0; p.floor = 0;      // inside the lift cabin
 });
 await page.waitForTimeout(150);
 await page.keyboard.press('e');
 await page.waitForTimeout(1500);
 const lifted = await pos();
 const st1 = await stats();
-check('liftul urca un etaj', lifted.floor === 1, `etaj = ${lifted.floor}`);
-check('vizualizarea urmeaza chelnerul', st1.activeFloor === 1, `etaj afisat = ${st1.activeFloor}`);
+check('the lift goes up one floor', lifted.floor === 1, `floor = ${lifted.floor}`);
+check('the view follows the waiter', st1.activeFloor === 1, `floor shown = ${st1.activeFloor}`);
 await page.screenshot({ path: `${OUT}/20-lift.png` });
 
 // --- 4. room service --------------------------------------------------------
-// Plimbam chelnerul prin toate camerele etajului 1, ciclic, ~25 de secunde.
+// Walk the waiter through every room on floor 1, in a loop, for ~25 seconds.
 const tipsBefore = (await stats()).tips;
 await page.evaluate(async () => {
   const h = window.__hotel, p = h.player;
@@ -95,18 +95,18 @@ await page.evaluate(async () => {
   let i = 0;
   while (Date.now() - t0 < 25000) {
     const n = h.config.ROOMS_PER_FLOOR;
-    const r = n + (i++ % n);                       // camerele etajului 1
+    const r = n + (i++ % n);                       // rooms on floor 1
     p.x = h.rooms.cx[r]; p.z = h.rooms.cz[r]; p.floor = 1;
     await new Promise((res) => setTimeout(res, 260));
   }
 });
 const st2 = await stats();
-check('chelnerul incaseaza bacsis', st2.tips > tipsBefore,
-      `bacsis ${tipsBefore} -> ${st2.tips}, cereri servite ${st2.served}`);
+check('the waiter collects tips', st2.tips > tipsBefore,
+      `tips ${tipsBefore} -> ${st2.tips}, requests served ${st2.served}`);
 await page.screenshot({ path: `${OUT}/21-roomservice.png` });
 
-// --- 5. boostul de la receptie ---------------------------------------------
-// Numaram check-in-urile in 10 secunde departe de birou, apoi in cerc.
+// --- 5. the reception boost -------------------------------------------------
+// Count check-ins over 10 seconds away from the desk, then inside the circle.
 const rate = async (atDesk) => {
   await page.evaluate((d) => {
     const h = window.__hotel, p = h.player;
@@ -121,17 +121,17 @@ const rate = async (atDesk) => {
 };
 const away = await rate(false);
 const desk = await rate(true);
-check('la receptie check-in-ul e mai rapid', desk > away, `${away} vs ${desk} check-in-uri / 10s`);
+check('check-in is faster at the desk', desk > away, `${away} vs ${desk} check-ins / 10s`);
 const deskPos = await pos();
-check('cercul receptiei se activeaza', deskPos.atDesk === true, JSON.stringify(deskPos));
-await page.screenshot({ path: `${OUT}/22-receptie.png` });
+check('the reception circle activates', deskPos.atDesk === true, JSON.stringify(deskPos));
+await page.screenshot({ path: `${OUT}/22-reception.png` });
 
 await browser.close();
 
 if (errors.length) {
-  console.error('\nERORI IN CONSOLA:');
+  console.error('\nCONSOLE ERRORS:');
   for (const e of errors.slice(0, 20)) console.error('  ' + e);
   failures++;
 }
-console.log(failures === 0 ? '\nToate verificarile au trecut.' : `\n${failures} verificari au picat.`);
+console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} checks failed.`);
 process.exit(failures === 0 ? 0 : 1);

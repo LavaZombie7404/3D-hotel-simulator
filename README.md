@@ -1,198 +1,200 @@
 # 3D Hotel Simulator
 
-Simulator 3D de hotel cu vedere **top-down**, rulat in browser cu Three.js.
-Fara bundler, fara CDN — se deschide pe un localhost si merge.
+A top-down 3D hotel management game that runs in the browser with Three.js.
+No bundler, no CDN — open it on a localhost and it works.
 
 ![gameplay](tools/shots/21-roomservice.png)
 
-## Cum il pornesti
+## Running it
 
 ```bash
-npm install     # doar three (+ playwright, optional, pentru teste)
+npm install     # just three (+ playwright, optional, for the tests)
 npm start       # http://localhost:8080
 ```
 
-Serverul e `server.js`, un static server fara dependinte (Node 18+).
-Poti da si alt port: `node server.js 3000`.
+The server is `server.js`, a static server with zero dependencies (Node 18+).
+You can pass another port: `node server.js 3000`.
 
-## Cum se joaca
+## How it plays
 
-Esti **chelnerul** — omuletul in vesta bordo, cu tava si cu cercul auriu sub
-picioare. Hotelul merge si fara tine, dar merge prost.
+You are **the waiter** — the little guy in the burgundy vest, with a tray and a
+gold ring under his feet. The hotel runs without you, but it runs badly.
 
-### Clientii
+### The guests
 
-1. Vin pe drum, intra in lobby si se aseaza la coada la receptie. Daca vad o
-   coada prea lunga (peste 12 oameni), se intorc din usa si pleaca.
-2. La check-in fiecare client iti plateste **$1**.
-3. Primeste apoi **cea mai buna camera libera** — un singur client per camera.
-4. Daca are camera la etaj, asteapta liftul, urca cu el si iese pe palier.
-5. Sta cazat ~16 secunde, iar la check-out plateste **$4 x nivelul camerei**
-   (nivel 1 = $4, nivel 8 = $32), apoi coboara tot cu liftul si pleaca.
-6. Daca nu e nicio camera libera, asteapta in lobby 25 de secunde si apoi
-   pleaca — apare la "Clienti pierduti".
+1. They arrive on the road, walk into the lobby and queue at reception. If they
+   see too long a line (more than 12 people), they turn around in the doorway
+   and leave.
+2. At check-in every guest pays you **$1**.
+3. They then get **the best free room** — one guest per room.
+4. If their room is upstairs, they wait for the lift, ride up and step out on
+   the landing.
+5. They stay for about 16 seconds, and at check-out they pay
+   **$4 x the room level** (level 1 = $4, level 8 = $32), then take the lift
+   back down and leave.
+6. If no room is free they wait in the lobby for 25 seconds and then walk out —
+   they show up under "Customers lost".
 
-### Liftul
+### The lift
 
-E un lift adevarat, nu o teleportare: o cabina cu usi glisante care circula
-intre etaje. Primeste apeluri de la palier si butoane de etaj din interior, si
-se duce mereu la statia ceruta cea mai apropiata. Are 14 locuri la inceput, si
-mai multe pe masura ce strangi boostere. Cand hotelul e plin chiar se face
-coada la el.
+It is a real lift, not a teleport: a cabin with sliding doors that travels
+between floors. It takes hall calls and in-car floor buttons, and always heads
+for the nearest requested stop. It has 14 seats to start with, and more as you
+collect boosters. When the hotel is full a queue really does build up for it.
 
-Camerele de la parter nu au nevoie de lift — se ajunge direct pe hol.
+Ground floor rooms need no lift — you walk straight down the corridor.
 
-### Ce faci tu
+### What you do
 
-- **Room service.** Cat sunt cazati, clientii cer chelnerul: deasupra camerei
-  apare un romb auriu. Intri in camera si incasezi bacsis
-  **$3 x nivelul camerei**. Ai 14 secunde pana clientul renunta.
-- **Receptie.** Cat timp stai in cercul auriu din fata biroului, check-in-ul
-  merge de 2.5 ori mai repede (1.1s → 0.44s per client). Cand hotelul e plin,
-  coada creste mai repede decat o poate goli receptia singura — asta e
-  momentul in care trebuie sa fii acolo.
+- **Room service.** While they are checked in, guests ring for the waiter: a
+  gold diamond appears above the room. Walk in and you collect a tip of
+  **$3 x the room level**. You have 14 seconds before the guest gives up.
+- **Reception.** While you stand in the gold circle in front of the desk,
+  check-in runs 2.5 times faster (1.1s → 0.44s per guest). When the hotel is
+  busy the queue grows faster than reception can clear it on its own — that is
+  the moment you need to be there.
 
-Deci alergi intre birou si camere: stai la receptie cat se aduna coada, apoi
-dai o tura pe etaje sa strangi bacsisul.
+So you run between the desk and the rooms: stand at reception while the line
+builds up, then do a lap of the floors to collect the tips.
 
-### Banii
+### Money
 
-Ii bagi inapoi in hotel: deblochezi camere noi, le urci nivelul si deschizi
-etajele. Cu cat sunt mai multe camere deblocate, cu atat vin clientii mai des.
+You put it back into the hotel: unlock new rooms, raise their level and open up
+floors. The more rooms you have unlocked, the more often guests turn up.
 
-| Actiune | Cost |
+| Action | Cost |
 |---|---|
-| Deblocare camera | $25 x 1.22^(camere deja deblocate) |
-| Upgrade camera (nivel N → N+1) | $35 x 1.7^(N-1) |
-| Deschidere etaj 1 / 2 / 3 / 4 / 5 | $450 / $1.800 / $6.000 / $20.000 / $60.000 |
+| Unlock a room | $25 x 1.22^(rooms already unlocked) |
+| Upgrade a room (level N → N+1) | $35 x 1.7^(N-1) |
+| Open floor 1 / 2 / 3 / 4 / 5 | $450 / $1,800 / $6,000 / $20,000 / $60,000 |
 
-Nivelul camerei se vede din culoarea podelei si din mobilierul care apare pe
-masura ce urci: pat → noptiera → birou → canapea → TV → planta → covor.
-Usile sunt **verzi** cand camera e libera, **rosii** cand e ocupata si
-**gri** cand e blocata.
+A room's level shows in the colour of its floor and in the furniture that
+appears as you go up: bed → nightstand → desk → sofa → TV → plant → rug.
+Doors are **green** when the room is free, **red** when it is occupied and
+**grey** when it is locked.
 
-Nivelul mai mare inseamna si bacsis mai mare, nu doar chirie mai mare.
+A higher level also means a bigger tip, not just a bigger room rate.
 
-## Renastere, etaje noi si prestigiu
+## Rebirth, new floors and prestige
 
-Cand ai castigat destul intr-o rulare, poti **renaste**: pierzi tot progresul
-(bani, camere, etaje) si primesti in schimb **un booster permanent**.
+Once you have earned enough in a run you can **rebirth**: you lose all your
+progress (money, rooms, floors) and get **one permanent booster** in exchange.
 
-- Fiecare booster da **+25% la toate incasarile** — check-in, chirie si bacsis.
-- Boosterii accelereaza si **fluxul de clienti**: sosiri mai dese si check-in
-  mai rapid la receptie. Fara asta, etajele castigate tarziu ar sta goale,
-  pentru ca limita reala n-ar fi numarul de camere, ci ghiseul.
-- Pornesti urmatoarea rulare cu ceva bani in plus, dupa radacina boosterilor.
-- Pragul urca: $5.000 pentru prima renastere, apoi cu 50% mai mult de fiecare
-  data.
+- Each booster gives **+25% on all income** — check-in, room rate and tips.
+- Boosters also speed up the **flow of guests**: more frequent arrivals and
+  faster check-in at reception. Without that, floors earned late would sit
+  empty, because the real limit would not be the room count but the desk.
+- You start the next run with some extra cash, scaled by the root of your
+  booster count.
+- The goal rises: $5,000 for the first rebirth, then 50% more each time.
 
-Cladirea insasi creste odata cu tine — **etaje care pana atunci nici nu existau**:
+The building itself grows with you — **floors that did not exist before**:
 
-| Renasteri | Ce apare |
+| Rebirths | What appears |
 |---|---|
-| 10 | Etajul 3 |
-| 15 | Etajul 4 |
-| 20 | Etajul 5 + se deblocheaza **Prestigiul** |
+| 10 | Floor 3 |
+| 15 | Floor 4 |
+| 20 | Floor 5 + **Prestige** unlocks |
 
-La 20 de renasteri apare **Prestigiul**: iti **inmulteste cu 10 boosterii pe
-care ii ai deja** si porneste numaratoarea renasterilor de la zero. Cu 20 de
-boostere (+500% venit) ajungi dintr-o data la 200 (+5.000%). Etajele castigate
-raman deschise pentru totdeauna.
+At 20 rebirths **Prestige** shows up: it **multiplies the boosters you already
+have by 10** and restarts the rebirth counter from zero. With 20 boosters
+(+500% income) you jump straight to 200 (+5,000%). The floors you earned stay
+open forever.
 
-Hotelul complet are **6 niveluri si 48 de camere**.
+The full hotel has **6 levels and 48 rooms**.
 
-Butoanele de renastere si prestigiu cer doua click-uri, ca sa nu stergi tot din
-greseala; confirmarea expira singura dupa cateva secunde.
+The rebirth and prestige buttons take two clicks, so you cannot wipe everything
+by accident; the confirmation expires by itself after a few seconds.
 
-## Comenzi
+## Controls
 
 | | |
 |---|---|
-| `W` `A` `S` `D` / sageti | misca chelnerul (relativ la cum e intoarsa camera) |
-| `E` in cabina | butonul de etaj: urci un nivel |
-| `E` pe palier | chemi liftul la tine |
-| `1`...`6` in cabina | apesi butonul etajului respectiv |
-| `1`...`6` in afara cabinei | doar muta privirea pe alt etaj |
-| `F` | camera urmareste chelnerul (porneste singura la prima miscare) |
-| Click stanga (drag) | roteste camera |
-| Click dreapta (drag) | deplaseaza |
-| Rotita | zoom |
-| Click pe o camera | o selecteaza (panoul din dreapta-jos) |
+| `W` `A` `S` `D` / arrows | move the waiter (relative to how the camera is turned) |
+| `E` in the cabin | floor button: go up one level |
+| `E` on the landing | call the lift to you |
+| `1`...`6` in the cabin | press that floor's button |
+| `1`...`6` outside the cabin | just move the view to another floor |
+| `F` | camera follows the waiter (turns itself on at your first move) |
+| Left click (drag) | rotate the camera |
+| Right click (drag) | pan |
+| Wheel | zoom |
+| Click a room | select it (panel in the bottom right) |
 
-Intri in cabina cand e oprita la etajul tau si mergi cu ea. Cat sunt usile
-inchise nu poti iesi.
+You step into the cabin when it is stopped at your floor and ride along with
+it. While the doors are shut you cannot get out.
 
-Nu exista control de viteza: simularea merge mereu in timp real.
+There is no speed control: the simulation always runs in real time.
 
-Se vede un singur etaj o data — altfel, la vedere de sus, etajele de deasupra
-ar acoperi tot. Cand iei liftul, vizualizarea te urmeaza automat.
+Only one floor is shown at a time — otherwise, seen from above, the floors on
+top would cover everything. When you take the lift, the view follows you.
 
-## Cum e facut optimizat
+## How it is optimized
 
-Scena intreaga se deseneaza in ~11-24 draw call-uri, indiferent de cati
-oaspeti sunt in hotel (si sunt pana la 300):
+The whole scene draws in about 11-24 draw calls, no matter how many guests are
+in the hotel (and there can be up to 300):
 
-- **Toti oaspetii = 2 draw call-uri.** Un `InstancedMesh` pentru corpuri si
-  unul pentru capete, cu capacitate prealocata (300) si culoare per instanta.
-- **Arhitectura statica e fuzionata.** Peretii, placile si lemnul fiecarui
-  etaj sunt unite cu `mergeGeometries` in cate o singura geometrie, cu
+- **Every guest = 2 draw calls.** One `InstancedMesh` for the bodies and one
+  for the heads, with pre-allocated capacity (300) and a per-instance colour.
+- **The static architecture is merged.** The walls, slabs and woodwork of each
+  floor are joined with `mergeGeometries` into a single geometry each, with
   `matrixAutoUpdate = false`.
-- **Se randeaza doar etajul activ.** Celelalte cinci etaje au `visible = false`,
-  deci nici nu ajung in pipeline.
-- **Podelele, usile si mobilierul sunt instantiate** si se reconstruiesc doar
-  cand chiar se schimba ceva (`roomsDirty` / `doorsDirty`), nu in fiecare cadru.
-- **Zero alocari in bucla.** Toata starea camerelor si a oaspetilor sta in
-  typed arrays (structure-of-arrays); `Object3D`, `Color` si `Vector3` de lucru
-  sunt reutilizate. Deci practic nu se declanseaza garbage collector in joc.
-- **Pas fix de simulare** (1/60 s) cu acumulator, decuplat de rata de randare —
-  jocul se comporta identic la 60 sau la 144 Hz, indiferent cate cadre apuca sa
-  deseneze placa video.
-- **Materiale Lambert**, nu Standard/PBR — mult mai ieftin, si arata bine cu
-  lumina hemisferica + directionala. Umbrele sunt dezactivate intentionat.
-- **HUD-ul se scrie la 5 Hz**, nu la fiecare cadru; textele `+$` folosesc un
-  pool fix de elemente DOM reciclate.
-- **Raycast doar la click**, niciodata per cadru.
-- **Liftul costa 2 draw call-uri**: partile fixe ale cabinei sunt fuzionate
-  intr-un mesh, iar cele 4 panouri de usa sunt un `InstancedMesh`.
-- **Coliziunile chelnerului refolosesc chiar dreptunghiurile peretilor**
-  generati de `build.js`, deci golurile de usa sunt gratis si nu exista un al
-  doilea model de coliziune care sa se desincronizeze de geometrie.
-  Deplasarea e impartita in pasi mai mici decat grosimea unui perete, ca un
-  cadru lung sa nu-l arunce prin zid.
+- **Only the active floor is rendered.** The other five have `visible = false`,
+  so they never even reach the pipeline.
+- **Room floors, doors and furniture are instanced** and are rebuilt only when
+  something actually changes (`roomsDirty` / `doorsDirty`), not every frame.
+- **Zero allocations in the loop.** All the room and guest state lives in typed
+  arrays (structure-of-arrays); the working `Object3D`, `Color` and `Vector3`
+  objects are reused. In practice the garbage collector never fires during play.
+- **Fixed simulation step** (1/60 s) with an accumulator, decoupled from the
+  render rate — the game behaves identically at 60 or at 144 Hz, no matter how
+  many frames the GPU manages to draw.
+- **Lambert materials**, not Standard/PBR — much cheaper, and they look fine
+  with hemisphere + directional lighting. Shadows are deliberately off.
+- **The HUD is written at 5 Hz**, not every frame; the `+$` labels use a fixed
+  pool of recycled DOM elements.
+- **Raycasting on click only**, never per frame.
+- **The lift costs 2 draw calls**: the fixed parts of the cabin are merged into
+  one mesh and the 4 door panels are an `InstancedMesh`.
+- **The waiter's collisions reuse the very rectangles the walls are built from**
+  in `build.js`, so the doorways come for free and there is no second collision
+  model that could drift out of sync with the geometry. Movement is split into
+  steps smaller than a wall is thick, so a long frame cannot throw him through
+  one.
 
-## Structura
+## Layout
 
 ```
-index.html        HUD + stiluri
-server.js         static server fara dependinte
-src/config.js     toate constantele de layout si de balans
-src/world.js      starea camerelor (typed arrays) + economia
-src/build.js      constructia scenei, geometrie fuzionata, instante
-src/guests.js     simularea oaspetilor + randarea instantiata
-src/player.js     chelnerul: miscare, coliziuni, room service
-src/elevator.js   cabina liftului: apeluri, usi, locuri, randare
-src/ui.js         HUD-ul si textele flotante
-src/main.js       renderer, camera top-down, input, bucla de joc
+index.html        HUD + styles
+server.js         static server, no dependencies
+src/config.js     every layout and balance constant
+src/world.js      room state (typed arrays) + the economy
+src/build.js      scene construction, merged geometry, instances
+src/guests.js     the guest simulation + instanced rendering
+src/player.js     the waiter: movement, collisions, room service
+src/elevator.js   the lift cabin: calls, doors, seats, rendering
+src/ui.js         the HUD and the floating labels
+src/main.js       renderer, top-down camera, input, game loop
 vendor/           three.js + OrbitControls + BufferGeometryUtils (local)
-tools/            teste automate in Playwright
+tools/            automated Playwright tests
 ```
 
-## Teste
+## Tests
 
 ```bash
-npm start                      # intr-un terminal
-node tools/smoke.mjs           # incarca jocul, lasa sa ruleze, verifica consola
-node tools/upper-floors.mjs    # deblocheaza tot si verifica liftul + etajele
-node tools/waiter.mjs          # miscare, coliziuni, bacsis, boost la receptie
-node tools/elevator.mjs        # cabina, usile, pasagerii, si ca traficul nu se blocheaza
-node tools/rebirth.mjs         # renastere, etajele la 10/15/20, prestigiul
+npm start                      # in one terminal
+node tools/smoke.mjs           # loads the game, lets it run, checks the console
+node tools/upper-floors.mjs    # unlocks everything and checks the lift + floors
+node tools/waiter.mjs          # movement, collisions, tips, the reception boost
+node tools/elevator.mjs        # the cabin, the doors, passengers, and no gridlock
+node tools/rebirth.mjs         # rebirth, the floors at 10/15/20, prestige
 ```
 
-Toate fac capturi de ecran in `tools/shots/`.
+They all write screenshots to `tools/shots/`.
 
-Pentru reglaje din consola browserului exista `window.__hotel`:
+For tweaking from the browser console there is `window.__hotel`:
 `__hotel.give(5000)`, `__hotel.unlockFloor(1)`, `__hotel.player`,
-`__hotel.setSpeed(4)` (accelerarea a ramas doar aici, pentru teste),
-`__hotel.lift`, `__hotel.stateCounts()` (cati oaspeti sunt in fiecare stare),
+`__hotel.setSpeed(4)` (fast-forward only lives here now, for the tests),
+`__hotel.lift`, `__hotel.stateCounts()` (how many guests are in each state),
 `__hotel.unlockAll(3)`, `__hotel.grantRebirths(20)`, `__hotel.rebirth()`,
 `__hotel.prestige()`.

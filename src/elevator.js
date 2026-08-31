@@ -1,14 +1,14 @@
 // ---------------------------------------------------------------------------
-// Liftul: o cabina care chiar circula intre etaje.
+// The lift: a cabin that genuinely travels between floors.
 //
-// Are apeluri de la palier (cineva asteapta la etajul f) si apeluri din
-// cabina (un pasager vrea la etajul f). Cand e liber alege statia cea mai
-// apropiata dintre cele cerute. Cabina are locuri limitate, deci la ore de
-// varf chiar se face coada la lift.
+// It takes hall calls (somebody is waiting on floor f) and car calls (a
+// passenger inside wants floor f). When idle it picks the nearest requested
+// stop. The cabin has limited seats, so at peak hours a queue really does
+// build up for it.
 //
-// Randare: partile fixe ale cabinei sunt fuzionate intr-un singur mesh, iar
-// cele 4 panouri de usa sunt un InstancedMesh — 2 draw call-uri pentru tot
-// liftul, indiferent cat de des se misca.
+// Rendering: the fixed parts of the cabin are merged into a single mesh and
+// the 4 door panels are one InstancedMesh - 2 draw calls for the whole lift,
+// no matter how much it moves.
 // ---------------------------------------------------------------------------
 import * as THREE from '../vendor/three.module.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
@@ -22,7 +22,7 @@ export const lift = {
   floor: 0,
   target: 0,
   mode: IDLE,
-  doorT: 1,        // 0 = usi inchise, 1 = complet deschise
+  doorT: 1,        // 0 = doors shut, 1 = fully open
   timer: C.LIFT_OPEN_WAIT,
   riders: 0,
 };
@@ -31,28 +31,28 @@ const hallCalls = new Uint8Array(C.FLOORS);
 const carCalls = new Uint8Array(C.FLOORS);
 const slots = new Uint8Array(C.LIFT_CAPACITY_MAX);
 
-// --- apeluri ----------------------------------------------------------------
+// --- calls ----------------------------------------------------------------
 
-/** Cineva asteapta liftul la etajul f. */
+/** Somebody is waiting for the lift on floor f. */
 export function callFromFloor(f) {
   if (f >= 0 && f < C.FLOORS) hallCalls[f] = 1;
 }
 
-/** Un pasager din cabina vrea la etajul f. */
+/** A passenger inside the cabin wants floor f. */
 export function callFromCabin(f) {
   if (f >= 0 && f < C.FLOORS) carCalls[f] = 1;
 }
 
-/** Cabina e oprita la etajul f cu usile complet deschise? */
+/** Is the cabin stopped at floor f with the doors fully open? */
 export function liftReady(f) {
   return lift.mode === IDLE && lift.floor === f && lift.doorT > 0.98;
 }
 
 export function doorsOpen() { return lift.doorT > 0.98 && lift.mode === IDLE; }
 
-// --- locuri in cabina -------------------------------------------------------
+// --- seats in the cabin -------------------------------------------------------
 
-/** Cate locuri are cabina acum — creste cu boosterii, ca sa tina pasul. */
+/** How many seats the cabin has now - grows with boosters, to keep up. */
 export function seats() {
   return Math.min(C.LIFT_CAPACITY_MAX, C.LIFT_CAPACITY + Math.floor(state.boosters / 8));
 }
@@ -70,14 +70,14 @@ export function freeSlot(i) {
   if (i >= 0 && i < C.LIFT_CAPACITY_MAX && slots[i] === 1) { slots[i] = 0; lift.riders--; }
 }
 
-// Locurile stau intr-o grila de 6 coloane, care incape in cabina si la
-// capacitate maxima (30 de locuri = 5 randuri).
+// Seats sit on a 6-column grid, which still fits inside the cabin at maximum
+// capacity (30 seats = 5 rows).
 export function slotX(i) { return C.ELEV_X + ((i % 6) - 2.5) * 0.5; }
 export function slotZ(i) { return (Math.floor(i / 6) - 2) * 0.55; }
 
 /**
- * Locul de asteptare de langa lift.
- * side -1 = spre lobby / palier, +1 = spre hol.
+ * A waiting spot next to the lift.
+ * side -1 = towards the lobby / landing, +1 = towards the corridor.
  */
 export function waitX(side, k) {
   const base = C.ELEV_X + side * (C.ELEV_HW + C.LIFT_WAIT_GAP);
@@ -85,12 +85,12 @@ export function waitX(side, k) {
 }
 export function waitZ(k) { return -1.1 + (k % 3) * 1.1; }
 
-// Nota: locurile de asteptare se repeta la fiecare 3 oameni pe adancime si se
-// intind in lateral; nu sunt limitate de capacitatea cabinei.
+// Note: waiting spots wrap every 3 people in depth and then spread sideways;
+// they are not limited by the cabin capacity.
 
-// --- logica -----------------------------------------------------------------
+// --- logic -----------------------------------------------------------------
 
-/** Statia urmatoare: cea mai apropiata dintre cele cerute, sau -1. */
+/** The next stop: the nearest requested floor, or -1. */
 function pickTarget() {
   let best = -1, bestD = Infinity;
   for (let f = 0; f < C.FLOORS; f++) {
@@ -105,15 +105,15 @@ function pickTarget() {
 export function updateLift(dt) {
   switch (lift.mode) {
     case IDLE:
-      // Sta cu usile deschise. Cat timp e in statie, apelul pentru etajul
-      // curent nu are sens — oricine vrea sa urce poate urca acum.
+      // Sitting with the doors open. While it is at a stop, a call for the
+      // current floor is meaningless - anyone who wants in can board now.
       hallCalls[lift.floor] = 0;
       carCalls[lift.floor] = 0;
       lift.timer -= dt;
       if (lift.timer <= 0) {
         const t = pickTarget();
         if (t >= 0) { lift.target = t; lift.mode = CLOSING; }
-        else lift.timer = 0.25;        // nimeni nu-l cheama: mai asteapta
+        else lift.timer = 0.25;        // nobody is calling: keep waiting
       }
       break;
 
@@ -149,7 +149,7 @@ export function resetLift() {
   hallCalls.fill(0); carCalls.fill(0); slots.fill(0);
 }
 
-// --- randare ----------------------------------------------------------------
+// --- rendering ----------------------------------------------------------------
 
 let cabin = null;
 let doors = null;
@@ -163,8 +163,8 @@ export function buildLift(scene) {
   const matCabin = new THREE.MeshLambertMaterial({ color: 0xb9c2cc });
   const matDoor = new THREE.MeshLambertMaterial({ color: 0x8d97a3 });
 
-  // Podeaua cabinei + peretii laterali, intr-o singura geometrie.
-  // Fara plafon: la vedere de sus trebuie sa se vada cine e inauntru.
+  // Cabin floor + side walls, in a single geometry.
+  // No ceiling: from a top-down view you must be able to see who is inside.
   const parts = [];
   const floorGeo = new THREE.BoxGeometry(C.CABIN_HW * 2, 0.1, C.CABIN_HW * 2);
   floorGeo.translate(0, 0.05, 0);
@@ -178,8 +178,8 @@ export function buildLift(scene) {
   for (const g of parts) g.dispose();
   cabin.add(new THREE.Mesh(merged, matCabin));
 
-  // Patru panouri de usa (doua pe fiecare fata, spre lobby si spre hol).
-  // Se "strang" spre margini pe masura ce usa se deschide.
+  // Four door panels (two on each face, towards the lobby and the corridor).
+  // They shrink towards the edges as the door opens.
   const panel = new THREE.BoxGeometry(0.14, H - 0.2, 1);
   doors = new THREE.InstancedMesh(panel, matDoor, 4);
   doors.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -191,7 +191,7 @@ export function renderLift() {
   cabin.position.set(C.ELEV_X, lift.y, 0);
 
   const half = C.CABIN_HW * 0.95;
-  const len = Math.max(0.001, half * (1 - lift.doorT));   // lungimea unui panou
+  const len = Math.max(0.001, half * (1 - lift.doorT));   // length of one panel
   let k = 0;
   for (const sx of [1, -1]) {
     for (const sz of [1, -1]) {

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// HUD-ul (DOM). Textul din interfata se actualizeaza la 5 Hz, nu la fiecare
-// cadru — scrierea in DOM e mult mai scumpa decat un draw call.
-// Textele flotante "+$" folosesc un pool fix de elemente, reciclate.
+// The HUD (DOM). Text is refreshed at 5 Hz rather than every frame — writing to
+// the DOM is far more expensive than a draw call.
+// The floating "+$" labels reuse a fixed pool of recycled elements.
 // ---------------------------------------------------------------------------
 import * as THREE from '../vendor/three.module.js';
 import * as C from './config.js';
@@ -16,7 +16,7 @@ const $ = (id) => document.getElementById(id);
 const el = {};
 let handlers = null;
 
-// --- pool de texte flotante -------------------------------------------------
+// --- floating label pool ----------------------------------------------------
 const POP_MAX = 24;
 const popPool = [];
 const popX = new Float32Array(POP_MAX);
@@ -26,9 +26,9 @@ const popLife = new Float32Array(POP_MAX);
 const POP_TTL = 1.5;
 const _v = new THREE.Vector3();
 
-// --- butoane care cer confirmare --------------------------------------------
-// Renasterea si prestigiul sterg tot progresul rularii, deci nu se declanseaza
-// din prima. Confirmarea expira singura daca te razgandesti.
+// --- buttons that ask for confirmation --------------------------------------
+// Rebirth and prestige wipe the whole run, so they never fire on the first
+// click. The confirmation expires by itself if you change your mind.
 const armed = [];
 
 function armButton(btn, confirmText, action) {
@@ -89,8 +89,8 @@ export function initUI(cbs) {
   el.perf = $('perf');
   el.popups = $('popups');
 
-  // Cate un buton pentru fiecare nivel posibil al cladirii. Etajele care inca
-  // n-au aparut raman ascunse (vezi setFloorButtons).
+  // One button per possible level of the building. Floors that have not shown
+  // up yet stay hidden (see setFloorButtons).
   el.floorBtns = [];
   for (let f = 0; f < C.FLOORS; f++) {
     const b = document.createElement('button');
@@ -101,8 +101,8 @@ export function initUI(cbs) {
   }
 
   el.roomAction.addEventListener('click', () => handlers.onRoomAction(state.selected));
-  armButton(el.rebirth, 'Sigur? Pierzi tot — click din nou', () => handlers.onRebirth());
-  armButton(el.prestige, 'Sigur? Click din nou', () => handlers.onPrestige());
+  armButton(el.rebirth, 'Sure? You lose everything — click again', () => handlers.onRebirth());
+  armButton(el.prestige, 'Sure? Click again', () => handlers.onPrestige());
 
   for (let i = 0; i < POP_MAX; i++) {
     const d = document.createElement('div');
@@ -114,17 +114,17 @@ export function initUI(cbs) {
   }
 }
 
-function floorName(f) { return f === 0 ? 'Parter' : 'Etaj ' + f; }
+function floorName(f) { return f === 0 ? 'Ground' : 'Floor ' + f; }
 
 export function setFloorButtons() {
   for (let f = 0; f < C.FLOORS; f++) {
     const b = el.floorBtns[f];
-    // Etajele care inca n-au aparut nu se arata deloc.
+    // Floors that have not appeared yet are not shown at all.
     b.style.display = floorAvailable(f) ? '' : 'none';
     b.classList.toggle('on', f === state.activeFloor);
     if (!state.floorUnlocked[f]) {
       b.textContent = floorName(f) + ' \u{1F512}';
-      b.title = 'Deblocheaza pentru $' + C.FLOOR_COST[f].toLocaleString('ro-RO');
+      b.title = 'Unlock for $' + C.FLOOR_COST[f].toLocaleString('en-US');
     } else {
       b.textContent = floorName(f);
       b.title = '';
@@ -132,11 +132,11 @@ export function setFloorButtons() {
   }
 }
 
-// --- panoul camerei ---------------------------------------------------------
+// --- room panel -------------------------------------------------------------
 
 function roomName(r) {
   const n = rooms.side[r] * C.ROOMS_PER_SIDE + rooms.index[r] + 1;
-  return (rooms.floor[r] === 0 ? 'P' : 'E' + rooms.floor[r]) + '-' + String(n).padStart(2, '0');
+  return (rooms.floor[r] === 0 ? 'G' : 'F' + rooms.floor[r]) + '-' + String(n).padStart(2, '0');
 }
 
 export function refreshRoomPanel() {
@@ -151,16 +151,16 @@ export function refreshRoomPanel() {
 
   const lvl = rooms.level[r];
   const floorOpen = state.floorUnlocked[rooms.floor[r]];
-  el.roomTitle.textContent = 'Camera ' + roomName(r);
+  el.roomTitle.textContent = 'Room ' + roomName(r);
 
   if (lvl === 0) {
     el.roomSub.textContent = floorOpen
-      ? 'Blocata · deblocheaz-o ca sa primesti clienti'
-      : 'Etajul ' + rooms.floor[r] + ' nu e deschis inca';
+      ? 'Locked · unlock it to take guests'
+      : 'Floor ' + rooms.floor[r] + ' is not open yet';
     el.roomBar.style.width = '0%';
     const cost = floorOpen ? unlockCost() : C.FLOOR_COST[rooms.floor[r]];
-    el.roomAction.textContent = (floorOpen ? 'Deblocheaza — $' : 'Deschide etajul — $') +
-      cost.toLocaleString('ro-RO');
+    el.roomAction.textContent = (floorOpen ? 'Unlock — $' : 'Open the floor — $') +
+      cost.toLocaleString('en-US');
     el.roomAction.disabled = state.money < cost;
     el.roomAction.className = 'buy';
     return;
@@ -168,89 +168,89 @@ export function refreshRoomPanel() {
 
   const occ = rooms.occupant[r] >= 0;
   el.roomSub.textContent =
-    'Nivel ' + lvl + '/' + C.MAX_LEVEL + ' · $' + payout(lvl).toLocaleString('ro-RO') +
-    ' per client · ' + (occ ? 'ocupata' : 'libera');
+    'Level ' + lvl + '/' + C.MAX_LEVEL + ' · $' + payout(lvl).toLocaleString('en-US') +
+    ' per guest · ' + (occ ? 'occupied' : 'free');
   el.roomBar.style.width = (lvl / C.MAX_LEVEL * 100) + '%';
 
   if (lvl >= C.MAX_LEVEL) {
-    el.roomAction.textContent = 'Nivel maxim';
+    el.roomAction.textContent = 'Max level';
     el.roomAction.disabled = true;
     el.roomAction.className = '';
   } else {
     const cost = upgradeCost(lvl);
-    el.roomAction.textContent = 'Nivel ' + (lvl + 1) + ' — $' + cost.toLocaleString('ro-RO') +
-      '  (→ $' + payout(lvl + 1).toLocaleString('ro-RO') + ')';
+    el.roomAction.textContent = 'Level ' + (lvl + 1) + ' — $' + cost.toLocaleString('en-US') +
+      '  (→ $' + payout(lvl + 1).toLocaleString('en-US') + ')';
     el.roomAction.disabled = state.money < cost;
     el.roomAction.className = 'buy';
   }
 }
 
-// --- renastere / prestigiu --------------------------------------------------
+// --- rebirth / prestige -----------------------------------------------------
 
 function boosterLabel(n) {
-  if (n === 0) return 'Fara boostere';
-  return '★ ' + n.toLocaleString('ro-RO') + (n === 1 ? ' booster' : ' boostere');
+  if (n === 0) return 'No boosters';
+  return '★ ' + n.toLocaleString('en-US') + (n === 1 ? ' booster' : ' boosters');
 }
 
 function refreshRebirth() {
   el.stars.textContent = boosterLabel(state.boosters);
   if (state.boosters > 0) {
     el.stars.textContent += '   +' +
-      Math.round((incomeMult() - 1) * 100).toLocaleString('ro-RO') + '% venit';
+      Math.round((incomeMult() - 1) * 100).toLocaleString('en-US') + '% income';
   }
 
   if (!isArmed(el.rebirth)) {
     if (canRebirth()) {
-      el.starProgress.textContent = state.rebirths + ' renasteri · ai strans $' +
-        Math.floor(state.totalEarned).toLocaleString('ro-RO');
-      el.rebirth.textContent = 'Renaste — +1 booster';
+      el.starProgress.textContent = state.rebirths + ' rebirths · earned $' +
+        Math.floor(state.totalEarned).toLocaleString('en-US') + ' this run';
+      el.rebirth.textContent = 'Rebirth — +1 booster';
       el.rebirth.disabled = false;
       el.rebirth.className = 'buy';
     } else {
       const need = rebirthGoal() - state.totalEarned;
-      el.starProgress.textContent = state.rebirths + ' renasteri · inca $' +
-        Math.ceil(need).toLocaleString('ro-RO') + ' pentru urmatoarea';
-      el.rebirth.textContent = 'Renaste';
+      el.starProgress.textContent = state.rebirths + ' rebirths · $' +
+        Math.ceil(need).toLocaleString('en-US') + ' more for the next one';
+      el.rebirth.textContent = 'Rebirth';
       el.rebirth.disabled = true;
       el.rebirth.className = '';
     }
   }
 
-  // Prestigiul apare abia dupa ce ai strans destule renasteri.
+  // Prestige only shows up once you have enough rebirths.
   const showPrestige = canPrestige() || state.prestige > 0;
   el.prestige.style.display = showPrestige ? '' : 'none';
   if (showPrestige && !isArmed(el.prestige)) {
     if (canPrestige()) {
-      el.prestige.textContent = 'Prestigiu — boosterii x' + C.PRESTIGE_MULT;
+      el.prestige.textContent = 'Prestige — boosters x' + C.PRESTIGE_MULT;
       el.prestige.disabled = false;
     } else {
-      el.prestige.textContent = 'Prestigiu la ' + C.PRESTIGE_REBIRTHS + ' renasteri';
+      el.prestige.textContent = 'Prestige at ' + C.PRESTIGE_REBIRTHS + ' rebirths';
       el.prestige.disabled = true;
     }
   }
 
   const next = nextFloorUnlock();
   if (next) {
-    el.nextFloor.textContent = 'Etaj ' + next.floor + ' apare la ' + next.at + ' renasteri';
+    el.nextFloor.textContent = 'Floor ' + next.floor + ' appears at ' + next.at + ' rebirths';
   } else if (state.prestige > 0) {
-    el.nextFloor.textContent = 'Prestigiu ' + state.prestige + ' · toate etajele deschise';
+    el.nextFloor.textContent = 'Prestige ' + state.prestige + ' · every floor is open';
   } else {
-    el.nextFloor.textContent = 'Toate etajele sunt deschise';
+    el.nextFloor.textContent = 'Every floor is open';
   }
 }
 
 // --- HUD --------------------------------------------------------------------
 
-/** Actualizarea "lenta" a HUD-ului, apelata de ~5 ori pe secunda. */
+/** The "slow" HUD refresh, called about 5 times per second. */
 export function refreshHUD(guests, queueLen, requests) {
-  el.money.textContent = '$' + Math.floor(state.money).toLocaleString('ro-RO');
-  el.income.textContent = '$' + Math.round(incomePerMinute()).toLocaleString('ro-RO') + ' / min';
+  el.money.textContent = '$' + Math.floor(state.money).toLocaleString('en-US');
+  el.income.textContent = '$' + Math.round(incomePerMinute()).toLocaleString('en-US') + ' / min';
   el.guests.textContent = guests;
   el.occ.textContent = occupiedCount() + ' / ' + unlockedCount();
   el.queue.textContent = queueLen;
   el.served.textContent = state.servedGuests;
   el.lost.textContent = state.lostGuests;
-  el.tips.textContent = '$' + Math.floor(state.tips).toLocaleString('ro-RO');
+  el.tips.textContent = '$' + Math.floor(state.tips).toLocaleString('en-US');
   el.req.textContent = requests;
   refreshRebirth();
   setFloorButtons();
@@ -262,10 +262,10 @@ export function refreshPerf(fps, calls, tris) {
     (tris / 1000).toFixed(0) + 'k tri';
 }
 
-// --- texte flotante ---------------------------------------------------------
+// --- floating labels --------------------------------------------------------
 
 export function updatePopups(camera, dt, w, h) {
-  // Preia ce a produs simularea.
+  // Pick up whatever the simulation produced.
   for (let i = 0; i < popupQueue.n; i++) {
     if (Math.abs(popupQueue.y[i] - state.activeFloor * C.FLOOR_H) > C.FLOOR_H * 0.9) continue;
     let slot = -1;
@@ -287,7 +287,7 @@ export function updatePopups(camera, dt, w, h) {
     const d = popPool[s];
     if (popLife[s] <= 0) { d.style.display = 'none'; continue; }
 
-    // Nu arata incasarile de pe alte etaje decat cel vizibil.
+    // Do not show earnings from floors other than the visible one.
     if (Math.abs(popY[s] - state.activeFloor * C.FLOOR_H) > C.FLOOR_H * 0.9) {
       d.style.display = 'none'; popLife[s] = 0; continue;
     }

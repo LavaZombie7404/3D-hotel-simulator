@@ -1,15 +1,15 @@
 // ---------------------------------------------------------------------------
-// Chelnerul — personajul controlat de jucator.
+// The waiter - the character the player controls.
 //
-// Ce face:
-//   * Room service: cand un client cazat cere ceva, deasupra camerei apare un
-//     romb auriu. Intri in camera => incasezi bacsis = $3 x nivelul camerei.
-//   * Receptie: cat timp stai in cercul din fata biroului, check-in-ul
-//     clientilor merge de ~2.5 ori mai repede.
+// What he does:
+//   * Room service: when a checked-in guest rings, a gold diamond appears above
+//     the room. Walk in => you collect a tip = $3 x the room level.
+//   * Reception: while you stand in the circle in front of the desk, check-ins
+//     run about 2.5 times faster.
 //
-// Coliziunile folosesc exact aceleasi dreptunghiuri ca peretii construiti in
-// build.js (gfx.wallRects), deci golurile de usa sunt gratis — nu exista un
-// al doilea model de coliziune care sa se desincronizeze de geometrie.
+// Collisions reuse exactly the same rectangles as the walls built in build.js
+// (gfx.wallRects), so the doorways are free - there is no second collision
+// model that could drift out of sync with the geometry.
 // ---------------------------------------------------------------------------
 import * as THREE from '../vendor/three.module.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
@@ -38,12 +38,12 @@ const _mv = new THREE.Vector2();
 export function buildPlayer(scene) {
   group = new THREE.Group();
 
-  const vest = new THREE.MeshLambertMaterial({ color: 0x8e2233 });   // vesta bordo
+  const vest = new THREE.MeshLambertMaterial({ color: 0x8e2233 });   // burgundy vest
   const skin = new THREE.MeshLambertMaterial({ color: 0xe8c39a });
   const tray = new THREE.MeshLambertMaterial({ color: 0xd8dde3 });
 
-  // Corpul si sapca au acelasi material: le unim intr-o singura geometrie,
-  // ca sa nu coste doua draw call-uri.
+  // Body and cap share a material: merge them into one geometry so they do
+  // not cost two draw calls.
   const bodyGeo = new THREE.CapsuleGeometry(0.28, 0.66, 3, 10).translate(0, 0.62, 0);
   const capGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.12, 10).translate(0, 1.6, 0);
   const merged = mergeGeometries([bodyGeo, capGeo], false);
@@ -54,12 +54,12 @@ export function buildPlayer(scene) {
   head.position.y = 1.4;
   group.add(head);
 
-  // Tava tinuta in fata, ca sa se vada imediat incotro e orientat.
+  // A tray held out front, so you can tell at a glance which way he faces.
   const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.05, 12), tray);
   plate.position.set(0, 1.0, 0.42);
   group.add(plate);
 
-  // Cerc auriu sub picioare: de sus, altfel chelnerul se pierde printre oaspeti.
+  // Gold ring underfoot: from above, the waiter would be lost among the guests.
   const ringGeo = new THREE.RingGeometry(0.46, 0.6, 24);
   ringGeo.rotateX(-Math.PI / 2);
   const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
@@ -72,7 +72,7 @@ export function buildPlayer(scene) {
   return group;
 }
 
-/** Il pune inapoi in lobby (folosit la renastere). */
+/** Puts him back in the lobby (used on rebirth). */
 export function resetPlayer() {
   player.x = C.LOBBY_X0 + 6;
   player.z = -5;
@@ -84,15 +84,15 @@ export function resetPlayer() {
   setServiceBoost(false);
 }
 
-// --- coliziune circle vs AABB ----------------------------------------------
+// --- circle vs AABB collision ----------------------------------------------
 
-/** Impinge jucatorul afara din orice perete in care a intrat. */
+/** Pushes the player out of any wall he has ended up inside. */
 function resolveCollisions() {
   const rects = gfx.wallRects[player.floor];
   if (!rects) return;
   const r = C.PLAYER_R;
 
-  // Doua treceri: dupa ce e impins dintr-un perete poate intra usor in altul.
+  // Two passes: after being pushed out of one wall he may nudge into another.
   for (let pass = 0; pass < 2; pass++) {
     let moved = false;
     for (let i = 0; i < rects.length; i += 4) {
@@ -108,7 +108,7 @@ function resolveCollisions() {
         player.x += dx * push;
         player.z += dz * push;
       } else {
-        // Centrul e chiar in dreptunghi: iesim pe latura cea mai apropiata.
+        // The centre is inside the rectangle: leave via the nearest edge.
         const left = player.x - x0, right = x1 - player.x;
         const back = player.z - z0, front = z1 - player.z;
         const m = Math.min(left, right, back, front);
@@ -123,15 +123,15 @@ function resolveCollisions() {
   }
 }
 
-// --- zone -------------------------------------------------------------------
+// --- zones -------------------------------------------------------------------
 
 /**
- * Chelnerul e in cabina?
+ * Is the waiter in the cabin?
  *
- * Odata urcat, ramane inauntru cat timp e in perimetrul cabinei — nu se
- * compara inaltimile la fiecare cadru. Altfel, la primul cadru de urcare
- * cabina se departeaza mai mult decat pragul si l-ar "scapa" pe scari.
- * Ca sa urce, cabina trebuie sa fie oprita la nivelul lui, nu doar sa treaca.
+ * Once aboard he stays in as long as he is inside the cabin footprint - the
+ * heights are not compared every frame. Otherwise the very first frame of the
+ * ride moves the cabin further than the threshold and would drop him.
+ * To board, the cabin must be stopped at his level, not merely passing by.
  */
 function inCabinNow() {
   const inside = Math.abs(player.x - C.ELEV_X) < C.CABIN_HW - 0.1 &&
@@ -140,13 +140,13 @@ function inCabinNow() {
   return inside && lift.mode !== MOVING && Math.abs(player.y - lift.y) < 0.6;
 }
 
-/** In putul liftului, dar fara cabina la etajul lui. */
+/** In the lift shaft, but with no cabin at his floor. */
 function inShaft() {
   return Math.abs(player.x - C.ELEV_X) < C.ELEV_HW - 0.1 &&
          Math.abs(player.z) < C.ELEV_HW - 0.1;
 }
 
-/** Camera in care se afla chelnerul, sau -1 daca e pe hol / in lobby. */
+/** The room the waiter is standing in, or -1 if he is in a corridor / lobby. */
 function roomUnderPlayer() {
   if (Math.abs(player.z) <= C.HALF_C) return -1;
   if (player.x < 0 || player.x >= C.CORRIDOR_X1) return -1;
@@ -156,7 +156,7 @@ function roomUnderPlayer() {
   return player.floor * C.ROOMS_PER_FLOOR + s * C.ROOMS_PER_SIDE + i;
 }
 
-/** Apasa butonul de etaj din cabina. */
+/** Press a floor button inside the cabin. */
 export function rideTo(floor) {
   if (!player.inCabin) return false;
   if (floor < 0 || floor >= C.FLOORS || !state.floorUnlocked[floor]) return false;
@@ -165,7 +165,7 @@ export function rideTo(floor) {
   return true;
 }
 
-/** Cheama liftul la etajul la care sta chelnerul. */
+/** Call the lift to the floor the waiter is standing on. */
 export function callLiftHere() {
   if (player.inCabin || !inShaft()) return false;
   callFromFloor(player.floor);
@@ -177,12 +177,12 @@ export function canRide() { return player.inCabin; }
 // --- update -----------------------------------------------------------------
 
 /**
- * @param {number} dt      secunde
- * @param {THREE.Camera} camera  pentru miscare relativa la ecran
- * @param {Set<string>} keys     tastele apasate acum
+ * @param {number} dt            seconds
+ * @param {THREE.Camera} camera   for screen-relative movement
+ * @param {Set<string>} keys      the keys currently held down
  */
 export function updatePlayer(dt, camera, keys) {
-  // Daca e in cabina, urca si coboara odata cu ea.
+  // If he is in the cabin, he rides up and down with it.
   player.inCabin = inCabinNow();
   if (player.inCabin) {
     player.y = lift.y;
@@ -192,7 +192,7 @@ export function updatePlayer(dt, camera, keys) {
   }
 
   {
-    // Directia de mers, relativa la cum e intoarsa camera.
+    // Movement direction, relative to how the camera is turned.
     let ix = 0, iz = 0;
     if (keys.has('KeyW') || keys.has('ArrowUp')) iz += 1;
     if (keys.has('KeyS') || keys.has('ArrowDown')) iz -= 1;
@@ -201,12 +201,12 @@ export function updatePlayer(dt, camera, keys) {
 
     player.moving = ix !== 0 || iz !== 0;
     if (player.moving) {
-      // Coloanele matricei camerei: [0..2] = dreapta, [4..6] = sus, [8..10] = -inainte.
+      // Camera matrix columns: [0..2] = right, [4..6] = up, [8..10] = -forward.
       const m = camera.matrix.elements;
       _rt.set(m[0], m[2]);
       _fwd.set(-m[8], -m[10]);
-      // Cand camera priveste aproape drept in jos, "inainte" pe ecran e de fapt
-      // vectorul ei de sus proiectat pe sol.
+      // When the camera looks almost straight down, screen "forward" is really
+      // its up vector projected onto the ground.
       if (_fwd.length() < 0.15) _fwd.set(m[4], m[6]);
       if (_rt.lengthSq() < 1e-6) _rt.set(1, 0);
       if (_fwd.lengthSq() < 1e-6) _fwd.set(0, -1);
@@ -218,9 +218,9 @@ export function updatePlayer(dt, camera, keys) {
         _mv.normalize();
         player.yaw = Math.atan2(_mv.x, _mv.y);
 
-        // Deplasarea se face in pasi mai mici decat grosimea unui perete.
-        // Altfel, la un cadru lung (sau la viteza 4x), pasul ar putea sari
-        // complet peste perete si jucatorul ar iesi din cladire.
+        // Movement is split into steps smaller than a wall is thick.
+        // Otherwise a long frame could skip a step clean over a wall and put
+        // the player outside the building.
         const dist = C.PLAYER_SPEED * dt;
         const n = Math.min(16, Math.max(1, Math.ceil(dist / (C.PLAYER_R * 0.7))));
         const stepX = _mv.x * (dist / n), stepZ = _mv.y * (dist / n);
@@ -231,24 +231,24 @@ export function updatePlayer(dt, camera, keys) {
         }
       }
     }
-    resolveCollisions();   // si cand sta pe loc, ca sa nu ramana blocat in perete
+    resolveCollisions();   // also when standing still, so he never stays stuck in a wall
   }
 
-  // Cu usile inchise nu se poate iesi din cabina.
+  // With the doors shut you cannot walk out of the cabin.
   if (player.inCabin && !doorsOpen()) {
     const lim = C.CABIN_HW - 0.15;
     player.x = Math.max(C.ELEV_X - lim, Math.min(C.ELEV_X + lim, player.x));
     player.z = Math.max(-lim, Math.min(lim, player.z));
   }
 
-  // Nu lasa chelnerul sa se piarda in campie daca iese pe usa din fata.
+  // Do not let the waiter wander off into the field if he walks out the front.
   if (player.x < C.SPAWN_X) player.x = C.SPAWN_X;
 
-  // Room service: intrarea in camera rezolva cererea.
+  // Room service: walking into the room resolves the request.
   const r = roomUnderPlayer();
   if (r >= 0) serveRoom(r);
 
-  // Zona din fata receptiei.
+  // The zone in front of the reception desk.
   const dx = player.x - C.DESK_ZONE_X, dz = player.z - C.DESK_ZONE_Z;
   const atDesk = player.floor === 0 && !player.inCabin &&
                  dx * dx + dz * dz < C.DESK_ZONE_R * C.DESK_ZONE_R;
@@ -258,7 +258,7 @@ export function updatePlayer(dt, camera, keys) {
   }
 }
 
-/** Chelnerul se vede doar pe etajul afisat. */
+/** The waiter is only drawn on the floor currently shown. */
 export function renderPlayer() {
   const visible = Math.abs(player.y - state.activeFloor * C.FLOOR_H) < C.FLOOR_H * 0.9;
   group.visible = visible;

@@ -1,73 +1,73 @@
 // ---------------------------------------------------------------------------
-// Toate constantele de balans si de layout intr-un singur loc.
+// Every balance and layout constant in one place.
 // ---------------------------------------------------------------------------
 
-// --- Geometrie cladire ---
-export const ROOM_W = 6;          // latimea unei camere (pe X)
-export const ROOM_D = 7;          // adancimea unei camere (pe Z)
-export const CORRIDOR_W = 4;      // latimea holului
+// --- Building geometry ---
+export const ROOM_W = 6;          // room width (along X)
+export const ROOM_D = 7;          // room depth (along Z)
+export const CORRIDOR_W = 4;      // corridor width
 export const HALF_C = CORRIDOR_W / 2;
-export const WALL_T = 0.22;       // grosime pereti
-export const WALL_H = 3.0;        // inaltime pereti
-export const SLAB_T = 0.3;        // grosime placa de etaj
-export const FLOOR_H = 4;         // distanta dintre etaje
+export const WALL_T = 0.22;       // wall thickness
+export const WALL_H = 3.0;        // wall height
+export const SLAB_T = 0.3;        // floor slab thickness
+export const FLOOR_H = 4;         // distance between floors
 
-export const ROOMS_PER_SIDE = 4;                        // camere pe fiecare latura a holului
+export const ROOMS_PER_SIDE = 4;                        // rooms on each side of the corridor
 export const ROOMS_PER_FLOOR = ROOMS_PER_SIDE * 2;      // 8
-export const FLOORS = 6;          // parter + etajele 1-5
-export const TOTAL_ROOMS = ROOMS_PER_FLOOR * FLOORS;    // 24
+export const FLOORS = 6;          // ground floor + floors 1-5
+export const TOTAL_ROOMS = ROOMS_PER_FLOOR * FLOORS;    // 48
 
 export const CORRIDOR_X0 = 0;
 export const CORRIDOR_X1 = ROOMS_PER_SIDE * ROOM_W;     // 24
-export const BUILD_Z = HALF_C + ROOM_D;                 // 9  (jumatate din adancimea cladirii)
+export const BUILD_Z = HALF_C + ROOM_D;                 // 9  (half the building depth)
 
-export const LOBBY_X0 = -18;      // peretele din fata al lobby-ului (cu intrarea)
-export const UPPER_X0 = -8;       // unde incepe placa etajelor superioare (palierul liftului)
-export const DOOR_W = 1.8;        // golul usii in peretele dinspre hol
+export const LOBBY_X0 = -18;      // front wall of the lobby (holds the entrance)
+export const UPPER_X0 = -8;       // where the upper floor slabs start (lift landing)
+export const DOOR_W = 1.8;        // doorway gap in the corridor-facing wall
 
 // --- Lift ---
 export const ELEV_X = -2.6;
-export const ELEV_HW = 1.9;       // jumatate din latura casei (a putului)
-export const CABIN_HW = 1.55;     // jumatate din latura cabinei
-export const LIFT_CAPACITY = 14;  // locuri de baza in cabina (cresc cu boosterii)
+export const ELEV_HW = 1.9;       // half width of the shaft
+export const CABIN_HW = 1.55;     // half width of the cabin
+export const LIFT_CAPACITY = 14;  // base seats in the cabin (grow with boosters)
 export const LIFT_CAPACITY_MAX = 30;
-export const LIFT_CAR_SPEED = 9;  // m/s pe verticala
-export const LIFT_DOOR_TIME = 0.4;// cat dureaza deschisul sau inchisul usilor
-export const LIFT_OPEN_WAIT = 0.7;// cat sta cu usile deschise intr-o statie
-export const LIFT_WAIT_GAP = 0.9; // la ce distanta de cabina astepta oamenii
+export const LIFT_CAR_SPEED = 9;  // m/s vertically
+export const LIFT_DOOR_TIME = 0.4;// how long the doors take to open or close
+export const LIFT_OPEN_WAIT = 0.7;// how long it holds the doors open at a stop
+export const LIFT_WAIT_GAP = 0.9; // how far from the cabin people wait
 
-// --- Receptie ---
-export const DESK_X = -10;        // centrul biroului de receptie
+// --- Reception ---
+export const DESK_X = -10;        // centre of the reception desk
 export const DESK_Z = 6.2;
 export const DESK_W = 6;
-export const QUEUE_X = -10;       // primul loc la coada
+export const QUEUE_X = -10;       // first spot in the queue
 export const QUEUE_Z = 4.4;
-export const QUEUE_STEP = 1.35;   // distanta intre oameni la coada
-export const MAX_QUEUE = 12;     // peste atat, clientii nici nu se mai aseaza la coada
+export const QUEUE_STEP = 1.35;   // spacing between people in the queue
+export const MAX_QUEUE = 12;      // beyond this, guests will not even join the line
 
-// --- Zona de asteptare din lobby (cand nu e nicio camera libera) ---
+// --- Lobby waiting area (used when no room is free) ---
 export const WAIT_X = -13;
 export const WAIT_Z = -3.5;
 export const WAIT_COLS = 4;
 export const WAIT_STEP = 1.6;
 export const MAX_WAIT = 16;
 
-// --- Oaspeti ---
+// --- Guests ---
 export const MAX_GUESTS = 300;
-export const MAX_WP = 10;         // waypoint-uri maxime pe traseu
+export const MAX_WP = 10;         // maximum waypoints in a path
 export const WALK_SPEED = 3.4;    // m/s
-export const SPAWN_X = -30;       // in afara ecranului, de unde vin
+export const SPAWN_X = -30;       // off screen, where they come from
 export const GUEST_R = 0.26;
 
-// --- Economie ---
+// --- Economy ---
 export const START_MONEY = 60;
-export const CHECK_IN_FEE = 1;    // $ platit la receptie de fiecare client
-export const PAY_PER_LEVEL = 4;   // $ la check-out = PAY_PER_LEVEL * nivelul camerei
+export const CHECK_IN_FEE = 1;    // $ every guest pays at the desk
+export const PAY_PER_LEVEL = 4;   // $ at check-out = PAY_PER_LEVEL * room level
 export const MAX_LEVEL = 8;
-export const STAY_TIME = 16;      // secunde de cazare
-export const SERVICE_TIME = 1.1;  // secunde per client la receptie (fara chelner)
-export const LOBBY_PATIENCE = 25; // cat asteapta in lobby dupa o camera libera
-export const QUEUE_PATIENCE = 30; // plasa de siguranta pentru cine tot nu ajunge la ghiseu
+export const STAY_TIME = 16;      // seconds a guest stays in the room
+export const SERVICE_TIME = 1.1;  // seconds per check-in (without the waiter)
+export const LOBBY_PATIENCE = 25; // how long they wait in the lobby for a free room
+export const QUEUE_PATIENCE = 30; // safety net for anyone who never reaches the desk
 
 export const UNLOCK_BASE = 25;
 export const UNLOCK_GROWTH = 1.22;
@@ -75,46 +75,46 @@ export const UPGRADE_BASE = 35;
 export const UPGRADE_GROWTH = 1.7;
 export const FLOOR_COST = [0, 450, 1800, 6000, 20000, 60000];
 
-// Etajele de sus nu exista de la inceput: apar dupa un numar de renasteri.
+// The upper floors do not exist from the start: they appear after N rebirths.
 export const FLOOR_REBIRTH_REQ = [0, 0, 0, 10, 15, 20];
 
-// --- Renastere si prestigiu ---
-// O renastere = un booster. Pragul urca cu fiecare renastere.
+// --- Rebirth and prestige ---
+// One rebirth = one booster. The goal rises with every rebirth.
 export const REBIRTH_BASE = 5000;
-export const REBIRTH_STEP = 0.5;      // pragul = REBIRTH_BASE * (1 + renasteri * 0.5)
-export const BOOST_BONUS = 0.25;      // +25% la toate incasarile, per booster
-export const BOOST_START_MONEY = 60;  // bani in plus la start, dupa radacina boosterilor
+export const REBIRTH_STEP = 0.5;      // goal = REBIRTH_BASE * (1 + rebirths * 0.5)
+export const BOOST_BONUS = 0.25;      // +25% on all income, per booster
+export const BOOST_START_MONEY = 60;  // extra starting cash, by root of booster count
 
-// Prestigiul: dupa 20 de renasteri, inmulteste cu 10 boosterii pe care ii ai.
+// Prestige: after 20 rebirths, multiply the boosters you already have by 10.
 export const PRESTIGE_REBIRTHS = 20;
 export const PRESTIGE_MULT = 10;
 
-// Boosterii cresc si fluxul de clienti — altfel etajele noi ar sta goale,
-// pentru ca receptia si sosirile ar ramane limita reala.
+// Boosters also speed up the flow of guests — otherwise the new floors would
+// sit empty, because reception and arrivals would stay the real bottleneck.
 export const FLOW_PER_BOOST = 0.05;
 export const FLOW_MAX = 6;
 
-// --- Sosiri ---
+// --- Arrivals ---
 export const ARRIVE_MIN = 0.9;
 export const ARRIVE_MAX = 8.0;
 export const ARRIVE_PER_ROOM = 0.42;
 
-// --- Simulare ---
+// --- Simulation ---
 export const FIXED_DT = 1 / 60;
-export const MAX_STEPS = 8;       // limita pasi de simulare pe cadru (anti spiral-of-death)
+export const MAX_STEPS = 8;       // cap on simulation steps per frame (anti spiral-of-death)
 
-// --- Chelnerul (jucatorul) ---
-export const PLAYER_SPEED = 6.2;      // m/s, mai rapid decat oaspetii
-export const PLAYER_R = 0.32;         // raza pentru coliziunea cu peretii
+// --- The waiter (the player) ---
+export const PLAYER_SPEED = 6.2;      // m/s, a bit faster than the guests
+export const PLAYER_R = 0.32;         // radius used for wall collisions
 
-// Cereri de room service de la clientii cazati.
-export const REQ_DELAY_MIN = 2.0;     // dupa cat timp de la cazare pot cere
+// Room service requests from guests who are checked in.
+export const REQ_DELAY_MIN = 2.0;     // how long after check-in they may ring
 export const REQ_DELAY_MAX = 7.0;
-export const REQ_TTL = 14;            // cat astepta clientul dupa chelner
-export const TIP_PER_LEVEL = 3;       // bacsis = TIP_PER_LEVEL * nivelul camerei
+export const REQ_TTL = 14;            // how long the guest waits for the waiter
+export const TIP_PER_LEVEL = 3;       // tip = TIP_PER_LEVEL * room level
 
-// Zona din fata receptiei: cat timp stai in ea, check-in-ul merge mai repede.
+// The circle in front of the desk: standing in it speeds up check-in.
 export const DESK_ZONE_X = DESK_X;
 export const DESK_ZONE_Z = DESK_Z - 2.0;
 export const DESK_ZONE_R = 2.6;
-export const SERVICE_BOOST = 0.4;     // 1.1s -> 0.44s cat timp esti la birou
+export const SERVICE_BOOST = 0.4;     // 1.1s -> 0.44s while you are at the desk

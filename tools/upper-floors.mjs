@@ -1,5 +1,5 @@
-// Test pentru etajele superioare: deblocheaza etajul 1 si 2, umple camerele
-// si verifica faptul ca oaspetii chiar ajung sus cu liftul si se cazeaza.
+// Upper floors test: unlock every floor, fill the rooms and check that guests
+// really do get upstairs by lift and check in.
 //   node tools/upper-floors.mjs [url]
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -19,16 +19,16 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 await page.goto(URL, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
 
-// Bani + toate etajele si camerele deblocate, cateva urcate la nivel mare.
+// Money + every floor and room unlocked, some raised to a high level.
 const setup = await page.evaluate(() => {
   const h = window.__hotel;
-  h.grantRebirths(20);      // ca sa existe si etajele de sus
+  h.grantRebirths(20);      // so the upper floors exist at all
   h.give(5000000);
   h.unlockAll(3);
   h.setSpeed(4);
   let unlocked = 0;
   for (let r = 0; r < h.config.TOTAL_ROOMS; r++) if (h.rooms.level[r] > 0) unlocked++;
-  return { unlocked, etaje: h.config.FLOORS, floors: h.state.floorUnlocked.slice() };
+  return { unlocked, floorCount: h.config.FLOORS, floors: h.state.floorUnlocked.slice() };
 });
 console.log('setup:', setup);
 
@@ -42,10 +42,10 @@ const stats = () => page.evaluate(() => ({
 }));
 
 await page.waitForTimeout(20000);
-console.log('parter :', await stats());
-await page.screenshot({ path: `${OUT}/10-parter.png` });
+console.log('ground  :', await stats());
+await page.screenshot({ path: `${OUT}/10-ground.png` });
 
-// Ocuparea pe etaje, citita direct din starea simularii.
+// Occupancy per floor, read straight from the simulation state.
 const perFloor = await page.evaluate(() => {
   const h = window.__hotel, n = h.config.ROOMS_PER_FLOOR, out = [];
   for (let f = 0; f < h.config.FLOORS; f++) {
@@ -59,14 +59,14 @@ console.log(perFloor.join('  |  '));
 
 await page.evaluate(() => window.__hotel.focusFloor(3));
 await page.waitForTimeout(2500);
-await page.screenshot({ path: `${OUT}/11-etaj3.png` });
+await page.screenshot({ path: `${OUT}/11-floor3.png` });
 
 await page.evaluate(() => window.__hotel.focusFloor(5));
 await page.waitForTimeout(2500);
-await page.screenshot({ path: `${OUT}/12-etaj5.png` });
+await page.screenshot({ path: `${OUT}/12-floor5.png` });
 
 await page.waitForTimeout(12000);
-console.log('final  :', await stats());
+console.log('final   :', await stats());
 console.log((await page.evaluate(() => {
   const h = window.__hotel, n = h.config.ROOMS_PER_FLOOR, out = [];
   for (let f = 0; f < h.config.FLOORS; f++) {
@@ -80,7 +80,7 @@ await page.screenshot({ path: `${OUT}/13-final.png` });
 
 await browser.close();
 if (errors.length) {
-  console.error('\nERORI:'); for (const e of errors.slice(0, 20)) console.error('  ' + e);
+  console.error('\nERRORS:'); for (const e of errors.slice(0, 20)) console.error('  ' + e);
   process.exit(1);
 }
-console.log('\nOK — fara erori in consola.');
+console.log('\nOK - no console errors.');

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Simulator 3D de hotel, top-down, cu randare instantiata",
+  "description": "Top-down 3D hotel simulator with instanced rendering",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js 8080"

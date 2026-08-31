@@ -1,5 +1,5 @@
-// Testul progresiei: renastere -> boostere, etaje noi la 10/15/20 renasteri,
-// apoi prestigiu care inmulteste boosterii cu 10.
+// Progression test: rebirth -> boosters, new floors at 10/15/20 rebirths, then
+// prestige multiplying the boosters by 10.
 //   node tools/rebirth.mjs [url]
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -47,25 +47,25 @@ const snap = () => page.evaluate(() => {
   };
 });
 
-/** Cate renasteri la rand, dandu-i de fiecare data castigul necesar. */
+/** Rebirth n times in a row, handing it the required earnings each time. */
 const rebirthTimes = (n) => page.evaluate((count) => {
   const h = window.__hotel;
   for (let i = 0; i < count; i++) {
     h.state.totalEarned = h.config.REBIRTH_BASE * (1 + h.state.rebirths * h.config.REBIRTH_STEP);
     h.rebirth();
   }
-}, n).then(() => page.waitForTimeout(400));   // lasa HUD-ul sa se reimprospateze
+}, n).then(() => page.waitForTimeout(400));   // let the HUD refresh
 
 // --- 1. start ---------------------------------------------------------------
 const start = await snap();
-check('nu poti renaste din prima', start.rebirthOff && start.boosters === 0, JSON.stringify(start.rebirthBtn));
-check('la inceput sunt doar 3 niveluri', start.avail.join(',') === '0,1,2' && start.tabs === 3,
-      `disponibile: [${start.avail}], taburi: ${start.tabs}`);
-check('prestigiul e ascuns', !start.prestigeShown);
-check('scrie cand apare etajul 3', /Etaj 3 apare la 10/.test(start.nextFloor), start.nextFloor);
+check('you cannot rebirth right away', start.rebirthOff && start.boosters === 0, JSON.stringify(start.rebirthBtn));
+check('only 3 levels exist at the start', start.avail.join(',') === '0,1,2' && start.tabs === 3,
+      `available: [${start.avail}], tabs: ${start.tabs}`);
+check('prestige is hidden', !start.prestigeShown);
+check('it says when floor 3 appears', /Floor 3 appears at 10/.test(start.nextFloor), start.nextFloor);
 await page.screenshot({ path: `${OUT}/40-start.png` });
 
-// --- 2. prima renastere, prin butonul din HUD -------------------------------
+// --- 2. the first rebirth, through the HUD button ---------------------------
 await page.evaluate(() => {
   const h = window.__hotel;
   h.give(500000);
@@ -74,76 +74,76 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(500);
 const ready = await snap();
-check('butonul se deblocheaza cand ai castigat destul',
+check('the button unlocks once you have earned enough',
       !ready.rebirthOff && /\+1 booster/.test(ready.rebirthBtn), ready.rebirthBtn);
 
 await page.click('#rebirth');
 await page.waitForTimeout(250);
 const armedSnap = await snap();
-check('primul click cere confirmare', /Sigur/.test(armedSnap.rebirthBtn) && armedSnap.boosters === 0,
+check('the first click asks for confirmation', /Sure/.test(armedSnap.rebirthBtn) && armedSnap.boosters === 0,
       armedSnap.rebirthBtn);
 await page.waitForTimeout(5000);
-check('confirmarea expira singura', !/Sigur/.test((await snap()).rebirthBtn));
+check('the confirmation expires by itself', !/Sure/.test((await snap()).rebirthBtn));
 
 await page.click('#rebirth');
 await page.waitForTimeout(250);
 await page.click('#rebirth');
 await page.waitForTimeout(1200);
 const one = await snap();
-check('renasterea da exact un booster', one.boosters === 1 && one.rebirths === 1, JSON.stringify(one.boosters));
-check('hotelul se reseteaza la 2 camere', one.unlocked === 2, `${one.unlocked} camere`);
-check('castigul rularii porneste de la zero', one.earned === 0, `$${one.earned}`);
-check('bonusul se aplica: nivel 5 da $25 in loc de $20', one.payout5 === 25, `$${one.payout5}`);
+check('a rebirth grants exactly one booster', one.boosters === 1 && one.rebirths === 1, JSON.stringify(one.boosters));
+check('the hotel resets to 2 rooms', one.unlocked === 2, `${one.unlocked} rooms`);
+check('the run earnings start from zero', one.earned === 0, `$${one.earned}`);
+check('the bonus applies: level 5 pays $25 instead of $20', one.payout5 === 25, `$${one.payout5}`);
 
-// --- 3. etajele noi la 10 / 15 / 20 renasteri -------------------------------
+// --- 3. the new floors at 10 / 15 / 20 rebirths -----------------------------
 await rebirthTimes(9);
 const at10 = await snap();
-check('la 10 renasteri apare etajul 3', at10.rebirths === 10 && at10.avail.includes(3),
-      `renasteri ${at10.rebirths}, disponibile [${at10.avail}]`);
-check('etajul 4 inca nu exista', !at10.avail.includes(4), `[${at10.avail}]`);
+check('floor 3 appears at 10 rebirths', at10.rebirths === 10 && at10.avail.includes(3),
+      `rebirths ${at10.rebirths}, available [${at10.avail}]`);
+check('floor 4 does not exist yet', !at10.avail.includes(4), `[${at10.avail}]`);
 
 await rebirthTimes(5);
 const at15 = await snap();
-check('la 15 renasteri apare etajul 4', at15.avail.includes(4) && !at15.avail.includes(5),
-      `renasteri ${at15.rebirths}, disponibile [${at15.avail}]`);
+check('floor 4 appears at 15 rebirths', at15.avail.includes(4) && !at15.avail.includes(5),
+      `rebirths ${at15.rebirths}, available [${at15.avail}]`);
 
 await rebirthTimes(5);
 const at20 = await snap();
-check('la 20 renasteri apare etajul 5', at20.avail.includes(5) && at20.tabs === 6,
-      `renasteri ${at20.rebirths}, taburi ${at20.tabs}`);
-check('prestigiul se deblocheaza fix atunci', at20.prestigeShown, 'butonul de prestigiu e vizibil');
-check('20 de boostere = +500% venit', at20.boosters === 20 && at20.mult === 6, `x${at20.mult}`);
-await page.screenshot({ path: `${OUT}/41-20-renasteri.png` });
+check('floor 5 appears at 20 rebirths', at20.avail.includes(5) && at20.tabs === 6,
+      `rebirths ${at20.rebirths}, tabs ${at20.tabs}`);
+check('prestige unlocks at exactly that point', at20.prestigeShown, 'the prestige button is visible');
+check('20 boosters = +500% income', at20.boosters === 20 && at20.mult === 6, `x${at20.mult}`);
+await page.screenshot({ path: `${OUT}/41-20-rebirths.png` });
 
-// --- 4. prestigiul ----------------------------------------------------------
+// --- 4. prestige ------------------------------------------------------------
 await page.click('#prestige');
 await page.waitForTimeout(250);
 await page.click('#prestige');
 await page.waitForTimeout(1200);
 const pres = await snap();
-check('prestigiul inmulteste boosterii cu 10', pres.boosters === 200 && pres.prestige === 1,
-      `${at20.boosters} -> ${pres.boosters} boostere`);
-check('renasterile o iau de la zero', pres.rebirths === 0, `${pres.rebirths} renasteri`);
-check('etajele castigate raman', pres.avail.length === 6, `disponibile [${pres.avail}]`);
-check('multiplicatorul urias se aplica', pres.payout5 === 20 * 51, `payout nivel 5 = $${pres.payout5}`);
-check('hotelul reincepe curat', pres.unlocked === 2 && pres.earned === 0,
-      `${pres.unlocked} camere, $${pres.earned} castigati`);
-await page.screenshot({ path: `${OUT}/42-prestigiu.png` });
+check('prestige multiplies the boosters by 10', pres.boosters === 200 && pres.prestige === 1,
+      `${at20.boosters} -> ${pres.boosters} boosters`);
+check('the rebirth counter restarts', pres.rebirths === 0, `${pres.rebirths} rebirths`);
+check('the floors you earned stay', pres.avail.length === 6, `available [${pres.avail}]`);
+check('the huge multiplier applies', pres.payout5 === 20 * 51, `level 5 payout = $${pres.payout5}`);
+check('the hotel starts over clean', pres.unlocked === 2 && pres.earned === 0,
+      `${pres.unlocked} rooms, $${pres.earned} earned`);
+await page.screenshot({ path: `${OUT}/42-prestige.png` });
 
-// --- 5. jocul merge mai departe --------------------------------------------
+// --- 5. the game keeps running ---------------------------------------------
 await page.evaluate(() => window.__hotel.setSpeed(3));
 const m0 = (await snap()).money;
 await page.waitForTimeout(12000);
 const later = await snap();
-check('jocul continua normal dupa prestigiu', later.money > m0 && later.guests > 0,
-      `$${m0} -> $${later.money}, ${later.guests} oaspeti`);
-await page.screenshot({ path: `${OUT}/43-repornit.png` });
+check('the game runs normally after prestige', later.money > m0 && later.guests > 0,
+      `$${m0} -> $${later.money}, ${later.guests} guests`);
+await page.screenshot({ path: `${OUT}/43-restarted.png` });
 
 await browser.close();
 if (errors.length) {
-  console.error('\nERORI IN CONSOLA:');
+  console.error('\nCONSOLE ERRORS:');
   for (const e of errors.slice(0, 20)) console.error('  ' + e);
   failures++;
 }
-console.log(failures === 0 ? '\nToate verificarile au trecut.' : `\n${failures} verificari au picat.`);
+console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} checks failed.`);
 process.exit(failures === 0 ? 0 : 1);

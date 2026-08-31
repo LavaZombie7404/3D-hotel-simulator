@@ -1,5 +1,5 @@
-// Test de fum: incarca jocul in Chromium, lasa simularea sa ruleze la 4x,
-// verifica economia si face capturi de ecran.
+// Smoke test: load the game in Chromium, let the simulation run fast-forward,
+// check the economy and take screenshots.
 //   node tools/smoke.mjs [url]
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -21,7 +21,7 @@ await page.goto(URL, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
 
 const canvas = await page.$('canvas');
-if (!canvas) throw new Error('canvas lipsa — WebGL nu a pornit');
+if (!canvas) throw new Error('canvas missing - WebGL did not start');
 
 const snap = () => page.evaluate(() => ({
   money: document.getElementById('money').textContent,
@@ -37,13 +37,13 @@ const snap = () => page.evaluate(() => ({
 console.log('start  ', await snap());
 await page.screenshot({ path: `${OUT}/01-start.png` });
 
-// Accelerat prin hook-ul de debug (nu mai exista control de viteza in UI).
+// Fast-forwarded through the debug hook (the UI has no speed control).
 await page.evaluate(() => window.__hotel.setSpeed(4));
 await page.waitForTimeout(12000);
-console.log('accelerat', await snap());
+console.log('sped up ', await snap());
 await page.screenshot({ path: `${OUT}/02-running.png` });
 
-// Deblocam si upgradam prin click pe camere: scanam puncte pana nimerim una.
+// Unlock and upgrade by clicking rooms: scan points until we hit one.
 const clicked = await page.evaluate(async () => {
   const cv = document.querySelector('canvas');
   const rect = cv.getBoundingClientRect();
@@ -68,33 +68,33 @@ const clicked = await page.evaluate(async () => {
   }
   return null;
 });
-console.log('camera selectata:', clicked);
+console.log('room selected:', clicked);
 await page.screenshot({ path: `${OUT}/03-selected.png` });
 
-// Apasam butonul de actiune de cateva ori (deblocare / upgrade).
+// Press the action button a few times (unlock / upgrade).
 for (let i = 0; i < 6; i++) {
   const btn = await page.$('#room-action:not([disabled])');
   if (!btn || !(await btn.isVisible())) break;
   await btn.click();
   await page.waitForTimeout(120);
 }
-console.log('dupa actiuni', await snap());
+console.log('after actions', await snap());
 
-// Etajul 2 (probabil inca blocat -> testam ca butonul nu crapa).
+// Floor 2 (probably still locked -> check the button does not blow up).
 await page.keyboard.press('2');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/04-floor.png` });
 
 await page.waitForTimeout(8000);
 const final = await snap();
-console.log('final  ', final);
+console.log('final   ', final);
 await page.screenshot({ path: `${OUT}/05-final.png` });
 
 await browser.close();
 
 if (errors.length) {
-  console.error('\nERORI IN CONSOLA:');
+  console.error('\nCONSOLE ERRORS:');
   for (const e of errors.slice(0, 20)) console.error('  ' + e);
   process.exit(1);
 }
-console.log('\nOK — fara erori in consola.');
+console.log('\nOK - no console errors.');

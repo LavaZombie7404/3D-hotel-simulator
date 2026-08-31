@@ -18,9 +18,10 @@ import {
 } from './build.js';
 import {
   buildGuestMeshes, resetGuests, simulate, renderGuests, guestCount, queueLength,
-  roomHasRequest, activeRequests,
+  roomHasRequest, activeRequests, stateCounts,
 } from './guests.js';
-import { player, buildPlayer, updatePlayer, renderPlayer, rideTo, canRide } from './player.js';
+import { player, buildPlayer, updatePlayer, renderPlayer, rideTo, canRide, callLiftHere } from './player.js';
+import { lift, buildLift, updateLift, renderLift } from './elevator.js';
 import { initUI, refreshHUD, refreshPerf, refreshRoomPanel, setFloorButtons, updatePopups } from './ui.js';
 
 // --- renderer ---------------------------------------------------------------
@@ -61,6 +62,7 @@ initWorld();
 resetGuests();
 buildScene(scene);
 buildGuestMeshes(scene);
+buildLift(scene);
 buildPlayer(scene);
 
 // --- stare joc --------------------------------------------------------------
@@ -155,7 +157,12 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
 
   if (e.code === 'KeyF') { follow = !follow; return; }
-  if (e.code === 'KeyE') { if (canRide()) rideTo(nextUnlockedFloor(player.floor)); return; }
+  if (e.code === 'KeyE') {
+    // In cabina = buton de etaj; pe palier = chemi liftul.
+    if (canRide()) rideTo(nextUnlockedFloor(player.floor));
+    else callLiftHere();
+    return;
+  }
 
   const n = Number(e.key);
   if (n >= 1 && n <= C.FLOORS) {
@@ -186,6 +193,8 @@ window.__hotel = {
   upgradeRoom: (r) => tryUpgradeRoom(r),
   focusFloor,
   player,
+  lift,
+  stateCounts,
   setSpeed(s) { speed = s; },
 };
 
@@ -199,6 +208,7 @@ function frame(now) {
     acc += dt * speed;
     let steps = 0;
     while (acc >= C.FIXED_DT && steps < C.MAX_STEPS) {
+      updateLift(C.FIXED_DT);     // inaintea oaspetilor: ei citesc starea cabinei
       simulate(C.FIXED_DT);
       state.simTime += C.FIXED_DT;
       secAcc += C.FIXED_DT;
@@ -231,6 +241,7 @@ function frame(now) {
   else if (state.doorsDirty) { refreshDoorColors(); state.doorsDirty = false; }
 
   renderGuests();
+  renderLift();
   renderPlayer();
   updateMarkers(state.simTime, roomHasRequest);
   setDeskRing(player.atDesk);

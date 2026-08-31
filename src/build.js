@@ -175,7 +175,6 @@ function buildFloor(scene, f) {
       solid(lift, 0.28, C.WALL_H, 0.28, C.ELEV_X + sx * C.ELEV_HW, wallY, sz * C.ELEV_HW);
     }
   }
-  lift.push(box(C.ELEV_HW * 2, 0.12, C.ELEV_HW * 2, C.ELEV_X, y + 0.06, 0));
   lift.push(box(C.ELEV_HW * 2, 0.2, 0.28, C.ELEV_X, y + C.WALL_H, C.ELEV_HW));
   lift.push(box(C.ELEV_HW * 2, 0.2, 0.28, C.ELEV_X, y + C.WALL_H, -C.ELEV_HW));
   mergeInto(group, lift, matSteel);

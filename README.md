@@ -22,13 +22,24 @@ picioare. Hotelul merge si fara tine, dar merge prost.
 
 ### Clientii
 
-1. Vin pe drum, intra in lobby si se aseaza la coada la receptie.
+1. Vin pe drum, intra in lobby si se aseaza la coada la receptie. Daca vad o
+   coada prea lunga (peste 12 oameni), se intorc din usa si pleaca.
 2. La check-in fiecare client iti plateste **$1**.
 3. Primeste apoi **cea mai buna camera libera** — un singur client per camera.
-4. Urca cu liftul, sta cazat ~16 secunde, iar la check-out plateste
-   **$4 x nivelul camerei** (nivel 1 = $4, nivel 8 = $32).
-5. Daca nu e nicio camera libera, asteapta in lobby 25 de secunde si apoi
+4. Daca are camera la etaj, asteapta liftul, urca cu el si iese pe palier.
+5. Sta cazat ~16 secunde, iar la check-out plateste **$4 x nivelul camerei**
+   (nivel 1 = $4, nivel 8 = $32), apoi coboara tot cu liftul si pleaca.
+6. Daca nu e nicio camera libera, asteapta in lobby 25 de secunde si apoi
    pleaca — apare la "Clienti pierduti".
+
+### Liftul
+
+E un lift adevarat, nu o teleportare: o cabina cu usi glisante care circula
+intre etaje. Are **9 locuri**, primeste apeluri de la palier si butoane de
+etaj din interior, si se duce mereu la statia ceruta cea mai apropiata. Cand
+hotelul e plin chiar se face coada la el.
+
+Camerele de la parter nu au nevoie de lift — se ajunge direct pe hol.
 
 ### Ce faci tu
 
@@ -67,14 +78,18 @@ Nivelul mai mare inseamna si bacsis mai mare, nu doar chirie mai mare.
 | | |
 |---|---|
 | `W` `A` `S` `D` / sageti | misca chelnerul (relativ la cum e intoarsa camera) |
-| `E` (stand in lift) | urci un etaj |
-| `1` `2` `3` in lift | mergi direct la etajul ala |
-| `1` `2` `3` in afara liftului | doar muta privirea pe alt etaj |
+| `E` in cabina | butonul de etaj: urci un nivel |
+| `E` pe palier | chemi liftul la tine |
+| `1` `2` `3` in cabina | apesi butonul etajului respectiv |
+| `1` `2` `3` in afara cabinei | doar muta privirea pe alt etaj |
 | `F` | camera urmareste chelnerul (porneste singura la prima miscare) |
 | Click stanga (drag) | roteste camera |
 | Click dreapta (drag) | deplaseaza |
 | Rotita | zoom |
 | Click pe o camera | o selecteaza (panoul din dreapta-jos) |
+
+Intri in cabina cand e oprita la etajul tau si mergi cu ea. Cat sunt usile
+inchise nu poti iesi.
 
 Nu exista control de viteza: simularea merge mereu in timp real.
 
@@ -83,7 +98,7 @@ ar acoperi tot. Cand iei liftul, vizualizarea te urmeaza automat.
 
 ## Cum e facut optimizat
 
-Scena intreaga se deseneaza in ~11-21 draw call-uri, indiferent de cati
+Scena intreaga se deseneaza in ~11-24 draw call-uri, indiferent de cati
 oaspeti sunt in hotel:
 
 - **Toti oaspetii = 2 draw call-uri.** Un `InstancedMesh` pentru corpuri si
@@ -106,6 +121,8 @@ oaspeti sunt in hotel:
 - **HUD-ul se scrie la 5 Hz**, nu la fiecare cadru; textele `+$` folosesc un
   pool fix de elemente DOM reciclate.
 - **Raycast doar la click**, niciodata per cadru.
+- **Liftul costa 2 draw call-uri**: partile fixe ale cabinei sunt fuzionate
+  intr-un mesh, iar cele 4 panouri de usa sunt un `InstancedMesh`.
 - **Coliziunile chelnerului refolosesc chiar dreptunghiurile peretilor**
   generati de `build.js`, deci golurile de usa sunt gratis si nu exista un al
   doilea model de coliziune care sa se desincronizeze de geometrie.
@@ -121,7 +138,8 @@ src/config.js     toate constantele de layout si de balans
 src/world.js      starea camerelor (typed arrays) + economia
 src/build.js      constructia scenei, geometrie fuzionata, instante
 src/guests.js     simularea oaspetilor + randarea instantiata
-src/player.js     chelnerul: miscare, coliziuni, lift, room service
+src/player.js     chelnerul: miscare, coliziuni, room service
+src/elevator.js   cabina liftului: apeluri, usi, locuri, randare
 src/ui.js         HUD-ul si textele flotante
 src/main.js       renderer, camera top-down, input, bucla de joc
 vendor/           three.js + OrbitControls + BufferGeometryUtils (local)
@@ -134,11 +152,13 @@ tools/            teste automate in Playwright
 npm start                      # intr-un terminal
 node tools/smoke.mjs           # incarca jocul, lasa sa ruleze, verifica consola
 node tools/upper-floors.mjs    # deblocheaza tot si verifica liftul + etajele
-node tools/waiter.mjs          # miscare, coliziuni, lift, bacsis, boost la receptie
+node tools/waiter.mjs          # miscare, coliziuni, bacsis, boost la receptie
+node tools/elevator.mjs        # cabina, usile, pasagerii, si ca traficul nu se blocheaza
 ```
 
-Toate trei fac capturi de ecran in `tools/shots/`.
+Toate fac capturi de ecran in `tools/shots/`.
 
 Pentru reglaje din consola browserului exista `window.__hotel`:
 `__hotel.give(5000)`, `__hotel.unlockFloor(1)`, `__hotel.player`,
-`__hotel.setSpeed(4)` (accelerarea a ramas doar aici, pentru teste).
+`__hotel.setSpeed(4)` (accelerarea a ramas doar aici, pentru teste),
+`__hotel.lift`, `__hotel.stateCounts()` (cati oaspeti sunt in fiecare stare).

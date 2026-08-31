@@ -22,12 +22,18 @@ export const CORRIDOR_X1 = ROOMS_PER_SIDE * ROOM_W;     // 24
 export const BUILD_Z = HALF_C + ROOM_D;                 // 9  (jumatate din adancimea cladirii)
 
 export const LOBBY_X0 = -18;      // peretele din fata al lobby-ului (cu intrarea)
-export const UPPER_X0 = -6;       // unde incepe placa etajelor superioare (palierul liftului)
+export const UPPER_X0 = -8;       // unde incepe placa etajelor superioare (palierul liftului)
 export const DOOR_W = 1.8;        // golul usii in peretele dinspre hol
 
 // --- Lift ---
 export const ELEV_X = -2.6;
-export const ELEV_HW = 1.9;       // jumatate din latura casei liftului
+export const ELEV_HW = 1.9;       // jumatate din latura casei (a putului)
+export const CABIN_HW = 1.55;     // jumatate din latura cabinei
+export const LIFT_CAPACITY = 9;   // cati oaspeti incap in cabina
+export const LIFT_CAR_SPEED = 7;  // m/s pe verticala
+export const LIFT_DOOR_TIME = 0.4;// cat dureaza deschisul sau inchisul usilor
+export const LIFT_OPEN_WAIT = 0.9;// cat sta cu usile deschise intr-o statie
+export const LIFT_WAIT_GAP = 0.9; // la ce distanta de cabina astepta oamenii
 
 // --- Receptie ---
 export const DESK_X = -10;        // centrul biroului de receptie
@@ -36,7 +42,7 @@ export const DESK_W = 6;
 export const QUEUE_X = -10;       // primul loc la coada
 export const QUEUE_Z = 4.4;
 export const QUEUE_STEP = 1.35;   // distanta intre oameni la coada
-export const MAX_QUEUE = 10;
+export const MAX_QUEUE = 12;     // peste atat, clientii nici nu se mai aseaza la coada
 
 // --- Zona de asteptare din lobby (cand nu e nicio camera libera) ---
 export const WAIT_X = -13;
@@ -49,7 +55,6 @@ export const MAX_WAIT = 16;
 export const MAX_GUESTS = 180;
 export const MAX_WP = 10;         // waypoint-uri maxime pe traseu
 export const WALK_SPEED = 3.4;    // m/s
-export const LIFT_SPEED = 4.5;    // m/s pe verticala
 export const SPAWN_X = -30;       // in afara ecranului, de unde vin
 export const GUEST_R = 0.26;
 
@@ -61,6 +66,7 @@ export const MAX_LEVEL = 8;
 export const STAY_TIME = 16;      // secunde de cazare
 export const SERVICE_TIME = 1.1;  // secunde per client la receptie (fara chelner)
 export const LOBBY_PATIENCE = 25; // cat asteapta in lobby dupa o camera libera
+export const QUEUE_PATIENCE = 30; // plasa de siguranta pentru cine tot nu ajunge la ghiseu
 
 export const UNLOCK_BASE = 25;
 export const UNLOCK_GROWTH = 1.26;
@@ -80,7 +86,6 @@ export const MAX_STEPS = 8;       // limita pasi de simulare pe cadru (anti spir
 // --- Chelnerul (jucatorul) ---
 export const PLAYER_SPEED = 6.2;      // m/s, mai rapid decat oaspetii
 export const PLAYER_R = 0.32;         // raza pentru coliziunea cu peretii
-export const RIDE_TIME = 0.7;         // durata unei curse cu liftul
 
 // Cereri de room service de la clientii cazati.
 export const REQ_DELAY_MIN = 2.0;     // dupa cat timp de la cazare pot cere

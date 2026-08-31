@@ -17,6 +17,7 @@ import * as C from './config.js';
 import { state } from './world.js';
 import { gfx } from './build.js';
 import { serveRoom, setServiceBoost } from './guests.js';
+import { lift, callFromFloor, callFromCabin, doorsOpen, MOVING } from './elevator.js';
 
 export const player = {
   x: C.LOBBY_X0 + 6,
@@ -24,10 +25,7 @@ export const player = {
   floor: 0,
   y: 0,
   yaw: Math.PI / 2,
-  riding: false,
-  rideFrom: 0,
-  rideTo: 0,
-  rideT: 0,
+  inCabin: false,
   atDesk: false,
   moving: false,
 };
@@ -115,9 +113,25 @@ function resolveCollisions() {
 
 // --- zone -------------------------------------------------------------------
 
-function inElevator() {
-  return Math.abs(player.x - C.ELEV_X) < C.ELEV_HW - 0.15 &&
-         Math.abs(player.z) < C.ELEV_HW - 0.15;
+/**
+ * Chelnerul e in cabina?
+ *
+ * Odata urcat, ramane inauntru cat timp e in perimetrul cabinei — nu se
+ * compara inaltimile la fiecare cadru. Altfel, la primul cadru de urcare
+ * cabina se departeaza mai mult decat pragul si l-ar "scapa" pe scari.
+ * Ca sa urce, cabina trebuie sa fie oprita la nivelul lui, nu doar sa treaca.
+ */
+function inCabinNow() {
+  const inside = Math.abs(player.x - C.ELEV_X) < C.CABIN_HW - 0.1 &&
+                 Math.abs(player.z) < C.CABIN_HW - 0.1;
+  if (player.inCabin) return inside;
+  return inside && lift.mode !== MOVING && Math.abs(player.y - lift.y) < 0.6;
+}
+
+/** In putul liftului, dar fara cabina la etajul lui. */
+function inShaft() {
+  return Math.abs(player.x - C.ELEV_X) < C.ELEV_HW - 0.1 &&
+         Math.abs(player.z) < C.ELEV_HW - 0.1;
 }
 
 /** Camera in care se afla chelnerul, sau -1 daca e pe hol / in lobby. */
@@ -130,20 +144,23 @@ function roomUnderPlayer() {
   return player.floor * C.ROOMS_PER_FLOOR + s * C.ROOMS_PER_SIDE + i;
 }
 
-/** Porneste o cursa cu liftul. Returneaza false daca nu se poate. */
+/** Apasa butonul de etaj din cabina. */
 export function rideTo(floor) {
-  if (player.riding || floor === player.floor) return false;
+  if (!player.inCabin) return false;
   if (floor < 0 || floor >= C.FLOORS || !state.floorUnlocked[floor]) return false;
-  if (!inElevator()) return false;
-  player.riding = true;
-  player.rideFrom = player.floor * C.FLOOR_H;
-  player.rideTo = floor * C.FLOOR_H;
-  player.rideT = 0;
-  player.floor = floor;      // etajul logic se schimba imediat; y se animeaza
+  if (floor === player.floor) return false;
+  callFromCabin(floor);
   return true;
 }
 
-export function canRide() { return inElevator() && !player.riding; }
+/** Cheama liftul la etajul la care sta chelnerul. */
+export function callLiftHere() {
+  if (player.inCabin || !inShaft()) return false;
+  callFromFloor(player.floor);
+  return true;
+}
+
+export function canRide() { return player.inCabin; }
 
 // --- update -----------------------------------------------------------------
 
@@ -153,19 +170,16 @@ export function canRide() { return inElevator() && !player.riding; }
  * @param {Set<string>} keys     tastele apasate acum
  */
 export function updatePlayer(dt, camera, keys) {
-  if (player.riding) {
-    player.rideT += dt / C.RIDE_TIME;
-    if (player.rideT >= 1) {
-      player.rideT = 1;
-      player.riding = false;
-    }
-    const t = player.rideT;
-    const e = t * t * (3 - 2 * t);                       // smoothstep
-    player.y = player.rideFrom + (player.rideTo - player.rideFrom) * e;
-    player.moving = false;
+  // Daca e in cabina, urca si coboara odata cu ea.
+  player.inCabin = inCabinNow();
+  if (player.inCabin) {
+    player.y = lift.y;
+    player.floor = Math.max(0, Math.min(C.FLOORS - 1, Math.round(lift.y / C.FLOOR_H)));
   } else {
     player.y = player.floor * C.FLOOR_H;
+  }
 
+  {
     // Directia de mers, relativa la cum e intoarsa camera.
     let ix = 0, iz = 0;
     if (keys.has('KeyW') || keys.has('ArrowUp')) iz += 1;
@@ -208,6 +222,13 @@ export function updatePlayer(dt, camera, keys) {
     resolveCollisions();   // si cand sta pe loc, ca sa nu ramana blocat in perete
   }
 
+  // Cu usile inchise nu se poate iesi din cabina.
+  if (player.inCabin && !doorsOpen()) {
+    const lim = C.CABIN_HW - 0.15;
+    player.x = Math.max(C.ELEV_X - lim, Math.min(C.ELEV_X + lim, player.x));
+    player.z = Math.max(-lim, Math.min(lim, player.z));
+  }
+
   // Nu lasa chelnerul sa se piarda in campie daca iese pe usa din fata.
   if (player.x < C.SPAWN_X) player.x = C.SPAWN_X;
 
@@ -217,7 +238,7 @@ export function updatePlayer(dt, camera, keys) {
 
   // Zona din fata receptiei.
   const dx = player.x - C.DESK_ZONE_X, dz = player.z - C.DESK_ZONE_Z;
-  const atDesk = player.floor === 0 && !player.riding &&
+  const atDesk = player.floor === 0 && !player.inCabin &&
                  dx * dx + dz * dz < C.DESK_ZONE_R * C.DESK_ZONE_R;
   if (atDesk !== player.atDesk) {
     player.atDesk = atDesk;

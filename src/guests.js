@@ -17,6 +17,10 @@ import * as C from './config.js';
 import {
   rooms, state, earn, findBestFreeRoom, arrivalInterval, payout, pushPopup,
 } from './world.js';
+import {
+  lift, callFromFloor, callFromCabin, liftReady, takeSlot, freeSlot,
+  slotX, slotZ, waitX, waitZ, resetLift,
+} from './elevator.js';
 
 // --- stari ------------------------------------------------------------------
 const S_TO_QUEUE = 0;   // merge spre locul lui la coada
@@ -26,6 +30,8 @@ const S_WAIT     = 3;   // asteapta o camera libera
 const S_TO_ROOM  = 4;   // urca spre camera
 const S_STAY     = 5;   // e cazat
 const S_TO_EXIT  = 6;   // pleaca din hotel
+const S_LIFT_WAIT = 7;  // asteapta liftul pe palier
+const S_LIFT_RIDE = 8;  // e in cabina
 
 const N = C.MAX_GUESTS;
 
@@ -42,6 +48,13 @@ const gWait   = new Int16Array(N);   // slotul din zona de asteptare, -1 = niciu
 const gPath   = new Float32Array(N * C.MAX_WP * 3);
 const gPathN  = new Uint8Array(N);   // cate waypoint-uri are traseul
 const gPathI  = new Uint8Array(N);   // waypoint-ul curent
+
+// Liftul.
+const gFloor = new Uint8Array(N);      // pe ce etaj se afla acum
+const gDest  = new Uint8Array(N);      // la ce etaj vrea
+const gAfter = new Uint8Array(N);      // 0 = spre camera, 1 = spre iesire
+const gSlot  = new Int8Array(N);       // locul din cabina, -1 = nu e in lift
+const gWaitK = new Uint8Array(N);      // ca sa nu stea toti in acelasi punct
 
 // Room service: fiecare client cazat cere o data chelnerul.
 const gReqWait = new Float32Array(N);  // cat mai are pana cere
@@ -103,6 +116,8 @@ export function resetGuests() {
   spawnTimer = 1.5;
   serviceMul = 1;
   gReqOn.fill(0);
+  gSlot.fill(-1);
+  resetLift();
 }
 
 export function guestCount() { return activeCount; }
@@ -115,6 +130,16 @@ export function setServiceBoost(on) { serviceMul = on ? C.SERVICE_BOOST : 1; }
 export function roomHasRequest(r) {
   const g = rooms.occupant[r];
   return g >= 0 && gReqOn[g] === 1;
+}
+
+/** Cati oaspeti sunt in fiecare stare — pentru diagnostic si teste. */
+export function stateCounts() {
+  const names = ['spre_coada', 'la_coada', 'spre_asteptare', 'asteapta_camera',
+                 'spre_camera', 'cazat', 'spre_iesire', 'asteapta_liftul', 'in_lift'];
+  const out = {};
+  for (const n of names) out[n] = 0;
+  for (let a = 0; a < activeCount; a++) out[names[gState[active[a]]]]++;
+  return out;
 }
 
 export function activeRequests() {
@@ -160,26 +185,73 @@ function pathToQueue(g, slot) {
 }
 
 function pathToRoom(g, r) {
-  const fy = rooms.cy[r];
-  wp(g, 0, C.ELEV_X, 0, 0);                    // baza liftului
-  wp(g, 1, C.ELEV_X, fy, 0);                   // urca
-  wp(g, 2, C.CORRIDOR_X0 + 1.2, fy, 0);        // intra pe hol
-  wp(g, 3, rooms.cx[r], fy, 0);                // in dreptul usii
-  wp(g, 4, rooms.cx[r], fy, rooms.doorZ[r]);   // in usa
-  wp(g, 5, rooms.cx[r], fy, rooms.cz[r]);      // in camera
-  setPathLen(g, 6);
+  const f = rooms.floor[r];
+  if (f === 0) {
+    // Parterul n-are nevoie de lift.
+    wp(g, 0, C.CORRIDOR_X0 + 1.2, 0, 0);
+    wp(g, 1, rooms.cx[r], 0, 0);
+    wp(g, 2, rooms.cx[r], 0, rooms.doorZ[r]);
+    wp(g, 3, rooms.cx[r], 0, rooms.cz[r]);
+    setPathLen(g, 4);
+    gState[g] = S_TO_ROOM;
+    return;
+  }
+  // Altfel: la lift, pe partea dinspre lobby.
+  const k = gWaitK[g];
+  wp(g, 0, waitX(-1, k), 0, waitZ(k));
+  setPathLen(g, 1);
+  gFloor[g] = 0;
+  gDest[g] = f;
+  gAfter[g] = 0;
+  gState[g] = S_LIFT_WAIT;
 }
 
-function pathFromRoomToExit(g, r) {
+/** Coboara din cabina la etajul camerei si merge in camera. */
+function pathFromLiftToRoom(g, r) {
   const fy = rooms.cy[r];
+  gY[g] = fy;
+  wp(g, 0, C.ELEV_X + C.ELEV_HW + C.LIFT_WAIT_GAP, fy, 0);   // iese spre hol
+  wp(g, 1, C.CORRIDOR_X0 + 1.2, fy, 0);
+  wp(g, 2, rooms.cx[r], fy, 0);
+  wp(g, 3, rooms.cx[r], fy, rooms.doorZ[r]);
+  wp(g, 4, rooms.cx[r], fy, rooms.cz[r]);
+  setPathLen(g, 5);
+  gState[g] = S_TO_ROOM;
+}
+
+/** Check-out: din camera spre iesire, cu lift daca e la etaj. */
+function startExit(g, r) {
+  const f = rooms.floor[r];
+  const fy = rooms.cy[r];
+  if (f === 0) {
+    wp(g, 0, rooms.cx[r], fy, rooms.doorZ[r]);
+    wp(g, 1, rooms.cx[r], fy, 0);
+    wp(g, 2, C.CORRIDOR_X0 + 1.2, fy, 0);
+    wp(g, 3, C.LOBBY_X0 + 1.5, 0, 0);
+    wp(g, 4, C.SPAWN_X, 0, 0);
+    setPathLen(g, 5);
+    gState[g] = S_TO_EXIT;
+    return;
+  }
+  const k = gWaitK[g];
   wp(g, 0, rooms.cx[r], fy, rooms.doorZ[r]);
   wp(g, 1, rooms.cx[r], fy, 0);
-  wp(g, 2, C.CORRIDOR_X0 + 1.2, fy, 0);
-  wp(g, 3, C.ELEV_X, fy, 0);
-  wp(g, 4, C.ELEV_X, 0, 0);                    // coboara
-  wp(g, 5, C.LOBBY_X0 + 1.5, 0, 0);
-  wp(g, 6, C.SPAWN_X, 0, 0);
-  setPathLen(g, 7);
+  wp(g, 2, waitX(1, k), fy, waitZ(k));     // asteapta liftul pe partea holului
+  setPathLen(g, 3);
+  gFloor[g] = f;
+  gDest[g] = 0;
+  gAfter[g] = 1;
+  gState[g] = S_LIFT_WAIT;
+}
+
+/** Coboara din cabina la parter si iese din hotel. */
+function pathFromLiftToExit(g) {
+  gY[g] = 0;
+  wp(g, 0, C.ELEV_X - C.ELEV_HW - C.LIFT_WAIT_GAP, 0, 0);
+  wp(g, 1, C.LOBBY_X0 + 1.5, 0, 0);
+  wp(g, 2, C.SPAWN_X, 0, 0);
+  setPathLen(g, 3);
+  gState[g] = S_TO_EXIT;
 }
 
 function pathLobbyToExit(g) {
@@ -205,14 +277,31 @@ function spawnGuest() {
   gTimer[g] = 0;
   gRetry[g] = 0;
   gTint[g] = (Math.random() * TINTS.length) | 0;
+  gFloor[g] = 0;
+  gDest[g] = 0;
+  gAfter[g] = 0;
+  gSlot[g] = -1;
+  gWaitK[g] = g % C.LIFT_CAPACITY;
+
+  // Daca la receptie e coada prea mare, clientul se razgandeste in usa si
+  // pleaca. Asa coada ramane marginita si ghiseul serveste in continuare la
+  // capacitate maxima, in loc sa expire toti fix inainte sa le vina randul.
+  if (queue.length >= C.MAX_QUEUE) {
+    state.lostGuests++;
+    gState[g] = S_TO_EXIT;
+    pathLobbyToExit(g);
+    return g;
+  }
 
   gState[g] = S_TO_QUEUE;
+  gTimer[g] = C.QUEUE_PATIENCE;
   queue.push(g);
   pathToQueue(g, queue.length - 1);
   return g;
 }
 
 function despawnGuest(g) {
+  if (gSlot[g] >= 0) { freeSlot(gSlot[g]); gSlot[g] = -1; }
   const at = activeAt[g];
   const last = active[--activeCount];
   active[at] = last;
@@ -249,9 +338,8 @@ function advance(g, dt) {
     return i >= n;
   }
 
-  // Deplasarea preponderent verticala inseamna lift: alta viteza.
-  const speed = Math.abs(dy) > horiz ? C.LIFT_SPEED : C.WALK_SPEED;
-  const step = speed * dt;
+  // Pe verticala nu se mai misca nimeni singur: pentru asta e liftul.
+  const step = C.WALK_SPEED * dt;
 
   if (step >= dist) {
     gX[g] = gPath[b]; gY[g] = gPath[b + 1]; gZ[g] = gPath[b + 2];
@@ -272,13 +360,18 @@ function arrived(g) { return gPathI[g] >= gPathN[g]; }
 
 // --- receptie ---------------------------------------------------------------
 
-/** Dupa ce pleaca cineva de la coada, restul avanseaza cu un loc. */
+/**
+ * Dupa ce pleaca cineva de la coada, restul avanseaza cu un loc.
+ *
+ * Muta doar tinta, NU si starea: daca ar reseta starea celui din capul cozii
+ * inapoi in S_TO_QUEUE, cronometrul de servire ar porni de la zero de fiecare
+ * data cand pleaca cineva din coada, si check-in-ul s-ar bloca de tot.
+ */
 function reflowQueue() {
   for (let i = 0; i < queue.length; i++) {
     const g = queue[i];
     wp(g, 0, queueSlotX(i), 0, queueSlotZ(i));
     setPathLen(g, 1);
-    gState[g] = S_TO_QUEUE;
   }
 }
 
@@ -287,7 +380,6 @@ function assignRoom(g) {
   if (r < 0) return false;
   rooms.occupant[r] = g;
   gRoom[g] = r;
-  gState[g] = S_TO_ROOM;
   pathToRoom(g, r);
   state.doorsDirty = true;
   freeWaitSlot(g);
@@ -325,8 +417,7 @@ function checkOut(g) {
 
   rooms.occupant[r] = -1;
   state.doorsDirty = true;
-  gState[g] = S_TO_EXIT;
-  pathFromRoomToExit(g, r);
+  startExit(g, r);
   gRoom[g] = -1;
 }
 
@@ -364,11 +455,13 @@ export function simulate(dt) {
 
     switch (gState[g]) {
       case S_TO_QUEUE:
-        if (done) gState[g] = S_QUEUE;
-        break;
-
       case S_QUEUE:
-        break;    // asteapta sa fie servit
+        if (done) gState[g] = S_QUEUE;
+        // Nimeni nu sta la infinit la coada: daca nu esti la receptie ca sa
+        // grabesti check-in-ul, incepi sa pierzi clienti inainte sa ajunga la birou.
+        gTimer[g] -= dt;
+        if (gTimer[g] <= 0) leaveQueue(g);
+        break;
 
       case S_TO_WAIT:
         if (done) gState[g] = S_WAIT;
@@ -411,11 +504,52 @@ export function simulate(dt) {
         if (gTimer[g] <= 0) checkOut(g);
         break;
 
+      case S_LIFT_WAIT:
+        // Cat asteapta, tine apelul apasat.
+        callFromFloor(gFloor[g]);
+        if (done && liftReady(gFloor[g])) {
+          const slot = takeSlot();
+          if (slot >= 0) {
+            gSlot[g] = slot;
+            gState[g] = S_LIFT_RIDE;
+            setPathLen(g, 0);         // de aici incolo il pozitioneaza cabina
+          }
+        }
+        break;
+
+      case S_LIFT_RIDE: {
+        const dest = gDest[g];
+        callFromCabin(dest);
+        gX[g] = slotX(gSlot[g]);
+        gZ[g] = slotZ(gSlot[g]);
+        gY[g] = lift.y;
+        if (liftReady(dest)) {
+          freeSlot(gSlot[g]);
+          gSlot[g] = -1;
+          gFloor[g] = dest;
+          if (gAfter[g] === 0) pathFromLiftToRoom(g, gRoom[g]);
+          else pathFromLiftToExit(g);
+        }
+        break;
+      }
+
       case S_TO_EXIT:
         if (done) despawnGuest(g);
         break;
     }
   }
+}
+
+/** Pleaca nervos direct de la coada. */
+function leaveQueue(g) {
+  const i = queue.indexOf(g);
+  if (i >= 0) {
+    queue.splice(i, 1);
+    reflowQueue();   // cronometrul de servire se pastreaza: urmatorul intra imediat
+  }
+  state.lostGuests++;
+  gState[g] = S_TO_EXIT;
+  pathLobbyToExit(g);
 }
 
 function giveUp(g) {
@@ -435,7 +569,7 @@ export function renderGuests() {
 
   for (let a = 0; a < activeCount; a++) {
     const g = active[a];
-    if (Math.abs(gY[g] - floorY) > C.FLOOR_H * 0.55) continue;
+    if (Math.abs(gY[g] - floorY) > C.FLOOR_H * 0.9) continue;
 
     _obj.position.set(gX[g], gY[g], gZ[g]);
     _obj.rotation.set(0, gYaw[g], 0);

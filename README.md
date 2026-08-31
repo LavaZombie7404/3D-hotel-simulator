@@ -1,7 +1,9 @@
 # 3D Hotel Simulator
 
 A top-down 3D hotel management game that runs in the browser with Three.js.
-No bundler, no CDN — open it on a localhost and it works.
+No bundler, no build step — open it on a localhost and it works.
+
+**Play it: https://lavazombie7404.github.io/3D-hotel-simulator/**
 
 ![gameplay](tools/shots/21-roomservice.png)
 

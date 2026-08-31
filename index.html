@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>3D Hotel Simulator</title>
+<script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>
 <style>
   :root {
     --bg: #0d1014;
@@ -95,6 +96,72 @@
     border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px;
     font-variant-numeric: tabular-nums;
   }
+  /* --- pause --- */
+  #pause {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    background: rgba(8, 10, 13, 0.72); backdrop-filter: blur(3px); z-index: 20;
+  }
+  #pause.on { display: flex; }
+  #pause h2 { margin: 0; font-size: 28px; letter-spacing: .5px; }
+  #pause button { font-size: 15px; padding: 10px 26px; }
+  #pause p { margin: 0; color: var(--dim); font-size: 13px; }
+
+  /* --- touch controls --- */
+  #stick {
+    position: absolute; left: 18px; bottom: 18px; width: 116px; height: 116px;
+    border-radius: 50%; background: rgba(255,255,255,.06);
+    border: 1px solid var(--line); display: none; touch-action: none; z-index: 15;
+  }
+  #stick.on { display: block; }
+  #stick > i {
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
+    margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(255,210,75,.75); box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  }
+  #lift-btn {
+    position: absolute; right: 18px; bottom: 18px; display: none; z-index: 15;
+    font-size: 15px; padding: 12px 20px;
+  }
+  #lift-btn.on { display: block; }
+
+  /* --- small screens: Poki scales the canvas down to 640x360 --- */
+  @media (max-width: 900px), (max-height: 560px) {
+    #perf, #legend { display: none; }
+    /* Stats strip on top, money panel tucked underneath it. */
+    #stats { position: absolute; top: 8px; left: 8px; }
+    #money-panel { top: 36px; left: 8px; }
+    #money-panel { min-width: 0; padding: 7px 9px; max-width: 46vw; }
+    #money { font-size: 19px; }
+    #income, #star-progress, #next-floor { font-size: 10px; }
+    #stars { font-size: 11px; }
+    #rebirth, #prestige { font-size: 11px; padding: 5px 8px; }
+    /* Three numbers in one strip, tucked under the money panel so it can
+       never collide with the floor tabs on the right. */
+    #stats {
+      bottom: auto; transform: none;
+      display: flex; gap: 12px; min-width: 0; padding: 4px 9px; font-size: 10px;
+    }
+    #stats .line { gap: 5px; }
+    #stats .line.extra, #stats .line.extra2 { display: none; }
+    #next-floor { display: none; }
+    #rebirth-box { margin-top: 6px; padding-top: 6px; }
+    #room-panel { width: 190px; padding: 7px 9px; bottom: 8px; right: 8px; }
+    #room-title { font-size: 13px; }
+    #room-sub, #room-empty, #room-panel button { font-size: 11px; }
+    #top-right { top: 8px; right: 8px; }
+    #floors button { padding: 5px 7px; font-size: 11px; }
+    #hint { font-size: 10px; padding: 4px 8px; bottom: 8px; max-width: 52vw; left: 42%; }
+    #stick { width: 92px; height: 92px; left: 10px; bottom: 10px; }
+    #stick > i { width: 38px; height: 38px; margin: -19px 0 0 -19px; }
+  }
+  /* On a touch device the joystick owns the bottom-left corner. */
+  body.touch #hint .kbd { display: none; }
+  #hint .touch-only { display: none; }
+  body.touch #hint .touch-only { display: inline; }
+  #hint { transition: opacity .6s; max-width: 70vw; }
+  #hint.gone { opacity: 0; pointer-events: none; }
+
   #hint {
     position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
     font-size: 12px; color: var(--dim); background: var(--panel);
@@ -126,12 +193,12 @@
 <div id="stats" class="panel">
   <div class="line"><span>Guests in hotel</span><b id="st-guests">0</b></div>
   <div class="line"><span>Rooms occupied</span><b id="st-occ">0 / 0</b></div>
-  <div class="line"><span>In line</span><b id="st-queue">0</b></div>
-  <div class="line"><span>Check-ins</span><b id="st-served">0</b></div>
+  <div class="line extra"><span>In line</span><b id="st-queue">0</b></div>
+  <div class="line extra"><span>Check-ins</span><b id="st-served">0</b></div>
   <div class="line"><span>Customers lost</span><b id="st-lost">0</b></div>
-  <div class="line" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)">
+  <div class="line extra2" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)">
     <span>Tips (waiter)</span><b id="st-tips" style="color:var(--gold)">$0</b></div>
-  <div class="line"><span>Requests waiting</span><b id="st-req">0</b></div>
+  <div class="line extra"><span>Requests waiting</span><b id="st-req">0</b></div>
   <div id="legend">
     <span class="dot" style="background:#46c86a"></span>free
     <span class="dot" style="background:#e0574f;margin-left:10px"></span>occupied
@@ -149,16 +216,24 @@
   </div>
 </div>
 
+<div id="pause">
+  <h2>Paused</h2>
+  <button id="resume">Resume</button>
+  <p>Press <b style="color:var(--txt)">Esc</b> to pause and resume</p>
+</div>
+
 <div id="perf">-- FPS &middot; -- draw calls</div>
 <div id="hint">
-  <b style="color:var(--txt)">WASD</b> = move the waiter &middot;
-  <b style="color:var(--txt)">E</b> in the lift = go up one floor &middot;
-  <b style="color:var(--txt)">F</b> = camera follows him &middot;
-  <b style="color:var(--txt)">1-6</b> = floor<br>
-  Walk into a room with a <span style="color:var(--gold)">&#9670;</span> above it = tip &middot;
-  stand in the reception circle = faster check-in &middot;
-  click a room = upgrade
+  <span class="kbd"><b style="color:var(--txt)">WASD</b> = move the waiter &middot;
+  <b style="color:var(--txt)">E</b> in the lift = go up a floor &middot;
+  <b style="color:var(--txt)">F</b> = camera follows &middot;
+  <b style="color:var(--txt)">Esc</b> = pause<br></span>
+  <span class="touch-only">Drag the stick to move &middot; </span>
+  Enter a room marked <span style="color:var(--gold)">&#9670;</span> for a tip &middot;
+  stand in the reception circle for faster check-in
 </div>
+<div id="stick"><i></i></div>
+<button id="lift-btn">Call lift</button>
 <div id="popups"></div>
 
 <script type="module" src="./src/main.js"></script>

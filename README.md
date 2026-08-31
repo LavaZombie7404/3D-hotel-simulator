@@ -162,6 +162,32 @@ in the hotel (and there can be up to 300):
   steps smaller than a wall is thick, so a long frame cannot throw him through
   one.
 
+## Publishing on Poki
+
+The build already meets Poki's technical bar:
+
+- **Poki SDK** wired up (`src/poki.js`): `init`, `gameLoadingFinished`,
+  `gameplayStart` on the player's first input, `gameplayStop` on any
+  interruption, and a `commercialBreak` when gameplay resumes from a pause. No
+  SDK event can fire during an ad. When the SDK is absent every call is a no-op,
+  so the game runs anywhere.
+- **Desktop, tablet and phone.** A virtual joystick drives the waiter on touch
+  devices, the floor tabs double as the lift's floor buttons, and a contextual
+  button calls or rides the lift.
+- **The HUD survives 640x360**, Poki's smallest scale target.
+- **Progress is saved** to localStorage, every call wrapped in try/catch so
+  incognito cannot break it. If storage is unavailable the game says so.
+- **Esc pauses and resumes.**
+- **No debug tooling ships**: `window.__hotel` only exists on localhost or with
+  `?debug`, and a test asserts it is gone on any other host.
+- **Nothing is fetched from outside** except the Poki SDK itself.
+- **788 KB of vendored three.js** (minified build), well inside the 8 MB budget.
+
+What is left is not code: Poki is invite-only and hand-curated. You apply
+through their game submission form, they review, and only then do you get
+access to upload for a Web Fit Test. Poki also asks that you be able to explain
+your tools and process, including AI use.
+
 ## Layout
 
 ```

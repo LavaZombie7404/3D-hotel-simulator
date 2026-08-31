@@ -8,7 +8,7 @@
 //   * Room floors, doors and furniture are InstancedMeshes rebuilt ONLY when
 //     the room state changes, not every frame.
 // ---------------------------------------------------------------------------
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
 import * as C from './config.js';
 import { rooms, state } from './world.js';

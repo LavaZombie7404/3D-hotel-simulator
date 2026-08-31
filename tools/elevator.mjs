@@ -13,7 +13,17 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+// The Poki SDK is served from their CDN and logs a COOP warning over plain
+// http on localhost. It is third-party and disappears on https / on Poki.
+const IGNORE = /Cross-Origin-Opener-Policy|poki-sdk|poki\.com/i;
+page.on('console', (m) => {
+  // Some blocked third-party requests log only "net::ERR_FAILED", with the real
+  // URL in the location, so check both.
+  const url = (m.location() && m.location().url) || '';
+  if (m.type() === 'error' && !IGNORE.test(m.text()) && !IGNORE.test(url)) {
+    errors.push(m.text());
+  }
+});
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 
 const C = await (async () => {

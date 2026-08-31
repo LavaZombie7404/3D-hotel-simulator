@@ -4,7 +4,7 @@
 // The loop uses a fixed simulation step (1/60 s) with an accumulator, decoupled
 // from the render rate, so the game behaves identically at 60 or 144 Hz.
 // ---------------------------------------------------------------------------
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { OrbitControls } from '../vendor/addons/OrbitControls.js';
 import * as C from './config.js';
 import {
@@ -25,8 +25,13 @@ import {
 import { lift, buildLift, updateLift, renderLift } from './elevator.js';
 import {
   initUI, refreshHUD, refreshPerf, refreshRoomPanel, setFloorButtons, updatePopups,
-  tickRebirthPrompt,
+  tickRebirthPrompt, setPaused, warnNoSave,
 } from './ui.js';
+import {
+  initPoki, loadingFinished, gameplayStart, gameplayStop, commercialBreak, adInProgress,
+} from './poki.js';
+import { loadGame, saveGame, canSave } from './save.js';
+import { initTouch, isTouch, releaseStick, updateLiftButton } from './touch.js';
 
 // --- renderer ---------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -63,6 +68,7 @@ scene.add(sun);
 
 // --- world -------------------------------------------------------------------
 initWorld();
+loadGame();          // picks up a previous session, if there is one
 resetGuests();
 buildScene(scene);
 buildGuestMeshes(scene);
@@ -82,6 +88,9 @@ let last = performance.now();
 // The camera follows the waiter. It starts off, so you can see the whole
 // hotel, and switches itself on the first time you press a movement key.
 let follow = false;
+let paused = false;
+let started = false;      // has the player made their first input yet?
+let saveAcc = 0;
 const keys = new Set();
 const _tgt = new THREE.Vector3();
 const _delta = new THREE.Vector3();
@@ -93,6 +102,10 @@ initUI({
     if (!state.floorUnlocked[f]) {
       if (!tryUnlockFloor(f)) return;
     }
+    firstInput();
+    // Standing in the cabin, a floor tab is that floor's button. This is the
+    // only way to pick a floor on a touch device, and it is handy with a mouse.
+    if (canRide()) { rideTo(f); return; }
     focusFloor(f);
   },
   onRoomAction(r) {
@@ -107,7 +120,18 @@ initUI({
   },
   onRebirth: () => resetAfter(doRebirth()),
   onPrestige: () => resetAfter(doPrestige()),
+  onResume: () => setPause(false),
 });
+
+initTouch({
+  onFirstInput: () => firstInput(),
+  onLift: () => {
+    firstInput();
+    if (canRide()) rideTo(nextUnlockedFloor(player.floor));
+    else callLiftHere();
+  },
+});
+if (!canSave) warnNoSave();
 setFloorButtons();
 refreshRoomPanel();
 
@@ -129,6 +153,31 @@ function resetAfter(happened) {
   refreshRoomPanel();
 }
 
+/**
+ * Poki wants gameplayStart on the player's first real input, not on load, and
+ * a commercial break only when gameplay resumes from a pause.
+ */
+function firstInput() {
+  if (started || paused || adInProgress()) return;
+  started = true;
+  gameplayStart();
+}
+
+function setPause(on) {
+  if (on === paused || adInProgress()) return;
+  paused = on;
+  setPaused(on);
+  if (on) {
+    keys.clear();
+    releaseStick();
+    gameplayStop();
+    saveGame();
+  } else if (started) {
+    // Resuming is the natural break: show an ad, then hand control back.
+    commercialBreak(() => keys.clear(), () => gameplayStart());
+  }
+}
+
 /** Switches the visible floor and moves the camera up or down with it. */
 function focusFloor(f) {
   follow = false;
@@ -146,7 +195,10 @@ const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 let downX = 0, downY = 0;
 
-renderer.domElement.addEventListener('pointerdown', (e) => { downX = e.clientX; downY = e.clientY; });
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  downX = e.clientX; downY = e.clientY;
+  firstInput();
+});
 
 renderer.domElement.addEventListener('pointerup', (e) => {
   // Only a clean click selects; dragging the camera does not.
@@ -173,6 +225,9 @@ function nextUnlockedFloor(from) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape') { e.preventDefault(); setPause(!paused); return; }
+  if (paused || adInProgress()) return;
+  firstInput();
   if (MOVE_KEYS.has(e.code)) {
     e.preventDefault();
     keys.add(e.code);
@@ -202,15 +257,23 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
 
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { saveGame(); setPause(true); }
+});
+window.addEventListener('pagehide', saveGame);
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Debug hook: used by the automated tests and handy for tuning balance from
-// the browser console (e.g. __hotel.give(5000)).
-window.__hotel = {
+// Debug hook: used by the automated tests and handy for tuning balance from the
+// browser console (e.g. __hotel.give(5000)). It is deliberately NOT exposed on
+// a real host - Poki requires shipped builds to carry no debug tooling.
+const DEV = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) ||
+            new URLSearchParams(location.search).has('debug');
+if (DEV) window.__hotel = {
   state, rooms,
   give(n) { state.money += n; },
   unlockFloor: (f) => tryUnlockFloor(f),
@@ -241,6 +304,8 @@ window.__hotel = {
   rebirth: () => resetAfter(doRebirth()),
   prestige: () => resetAfter(doPrestige()),
   setSpeed(s) { speed = s; },
+  save: saveGame,
+  load: loadGame,
 };
 
 // --- loop ------------------------------------------------------------------
@@ -248,8 +313,10 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.25);
   last = now;
 
+  const frozen = paused || adInProgress();
+
   // Fixed-step simulation.
-  if (speed > 0) {
+  if (speed > 0 && !frozen) {
     acc += dt * speed;
     let steps = 0;
     while (acc >= C.FIXED_DT && steps < C.MAX_STEPS) {
@@ -266,7 +333,11 @@ function frame(now) {
 
   // The waiter moves on the same clock as the simulation, so he can always
   // keep up with the requests.
-  updatePlayer(Math.min(dt, 0.1) * speed, camera, keys);
+  updatePlayer(frozen ? 0 : Math.min(dt, 0.1) * speed, camera, keys);
+
+  // Autosave, and once more whenever the tab goes away (see below).
+  saveAcc += dt;
+  if (saveAcc >= 10) { saveAcc = 0; saveGame(); }
 
   // The camera follows the waiter and jumps to his floor when he takes the lift.
   if (follow) {
@@ -288,6 +359,7 @@ function frame(now) {
   renderGuests();
   renderLift();
   renderPlayer();
+  updateLiftButton();
   updateMarkers(state.simTime, roomHasRequest);
   setDeskRing(player.atDesk);
   controls.update();
@@ -308,4 +380,10 @@ function frame(now) {
 
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+
+// Start the loop only once the SDK has had its chance to initialise.
+initPoki().then(() => {
+  loadingFinished();
+  last = performance.now();
+  requestAnimationFrame(frame);
+});

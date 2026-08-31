@@ -11,13 +11,17 @@
 // (gfx.wallRects), so the doorways are free - there is no second collision
 // model that could drift out of sync with the geometry.
 // ---------------------------------------------------------------------------
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
 import * as C from './config.js';
 import { state } from './world.js';
 import { gfx } from './build.js';
 import { serveRoom, setServiceBoost } from './guests.js';
 import { lift, callFromFloor, callFromCabin, doorsOpen, MOVING } from './elevator.js';
+
+// Touch input: the virtual joystick writes a direction in here and it is
+// merged with the keyboard in updatePlayer, so both schemes share one path.
+export const stick = { x: 0, y: 0 };
 
 export const player = {
   x: C.LOBBY_X0 + 6,
@@ -141,7 +145,7 @@ function inCabinNow() {
 }
 
 /** In the lift shaft, but with no cabin at his floor. */
-function inShaft() {
+export function inShaft() {
   return Math.abs(player.x - C.ELEV_X) < C.ELEV_HW - 0.1 &&
          Math.abs(player.z) < C.ELEV_HW - 0.1;
 }
@@ -193,13 +197,13 @@ export function updatePlayer(dt, camera, keys) {
 
   {
     // Movement direction, relative to how the camera is turned.
-    let ix = 0, iz = 0;
+    let ix = stick.x, iz = stick.y;
     if (keys.has('KeyW') || keys.has('ArrowUp')) iz += 1;
     if (keys.has('KeyS') || keys.has('ArrowDown')) iz -= 1;
     if (keys.has('KeyD') || keys.has('ArrowRight')) ix += 1;
     if (keys.has('KeyA') || keys.has('ArrowLeft')) ix -= 1;
 
-    player.moving = ix !== 0 || iz !== 0;
+    player.moving = Math.abs(ix) > 0.01 || Math.abs(iz) > 0.01;
     if (player.moving) {
       // Camera matrix columns: [0..2] = right, [4..6] = up, [8..10] = -forward.
       const m = camera.matrix.elements;

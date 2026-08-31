@@ -10,7 +10,7 @@
 // the 4 door panels are one InstancedMesh - 2 draw calls for the whole lift,
 // no matter how much it moves.
 // ---------------------------------------------------------------------------
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
 import * as C from './config.js';
 import { state } from './world.js';

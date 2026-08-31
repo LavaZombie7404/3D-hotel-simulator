@@ -12,7 +12,7 @@
 // All state lives in typed arrays (structure-of-arrays) and every guest is
 // drawn from 2 InstancedMeshes => 2 draw calls for the whole crowd.
 // ---------------------------------------------------------------------------
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from '../vendor/three.module.min.js';
 import * as C from './config.js';
 import {
   rooms, state, earn, findBestFreeRoom, arrivalInterval, payout, pushPopup,

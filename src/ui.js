@@ -3,7 +3,7 @@
 // the DOM is far more expensive than a draw call.
 // The floating "+$" labels reuse a fixed pool of recycled elements.
 // ---------------------------------------------------------------------------
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from '../vendor/three.module.min.js';
 import * as C from './config.js';
 import {
   rooms, state, popupQueue,
@@ -87,6 +87,10 @@ export function initUI(cbs) {
   el.roomBar = $('room-bar').firstElementChild;
   el.roomAction = $('room-action');
   el.perf = $('perf');
+  el.pause = $('pause');
+  // Poki prefers short, visual guidance over a wall of text, so the hint
+  // fades out once the player has had a chance to read it.
+  setTimeout(() => $('hint').classList.add('gone'), 14000);
   el.popups = $('popups');
 
   // One button per possible level of the building. Floors that have not shown
@@ -101,6 +105,7 @@ export function initUI(cbs) {
   }
 
   el.roomAction.addEventListener('click', () => handlers.onRoomAction(state.selected));
+  $('resume').addEventListener('click', () => handlers.onResume());
   armButton(el.rebirth, 'Sure? You lose everything — click again', () => handlers.onRebirth());
   armButton(el.prestige, 'Sure? Click again', () => handlers.onPrestige());
 
@@ -112,6 +117,15 @@ export function initUI(cbs) {
     popPool.push(d);
     popLife[i] = 0;
   }
+}
+
+export function setPaused(on) {
+  el.pause.classList.toggle('on', on);
+}
+
+/** Shown once at startup when the browser will not let us save (incognito). */
+export function warnNoSave() {
+  el.starProgress.textContent = 'progress will not be saved in this browser';
 }
 
 function floorName(f) { return f === 0 ? 'Ground' : 'Floor ' + f; }

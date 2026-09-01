@@ -96,12 +96,13 @@ incremental, upgrade, restaurant
 
 - **Engine:** none. Hand-written JavaScript on top of Three.js r180.
 - **Audio:** synthesised with Web Audio at runtime; there are no sound files.
-- **Size:** ~788 KB of vendored Three.js plus ~60 KB of game code. No build step.
+- **Size:** ~973 KB total (788 KB vendored Three.js, minified, plus the game).
+  No build step, no bundler.
 - **External requests:** none, except the Poki SDK itself. Everything else is
   bundled.
 - **Aspect:** 16:9, scales to fill; verified down to 640×360.
-- **Performance:** the whole scene is 11–24 draw calls with 48 rooms and up to
-  300 guests on screen. Fixed 1/60 s simulation step, decoupled from render
+- **Performance:** the whole scene is 11–38 draw calls with 48 rooms, hired
+  staff, a full restaurant and up to 300 guests on screen. Fixed 1/60 s simulation step, decoupled from render
   rate. No per-frame allocations, so the GC does not fire during play.
 
 ## Poki requirements checklist
@@ -125,9 +126,22 @@ incremental, upgrade, restaurant
 | Skippable intros | ✅ there are none |
 | Visual tutorial over text | ✅ world-space arrow, two steps |
 | Sound | ✅ synthesised, with a mute toggle |
+| HUD readable at the smallest scale | ✅ tested for overflow *and* overlap |
 
 `node tools/poki-ready.mjs` checks all of the above automatically, and passes
 against the live URL.
+
+## Verified before submitting
+
+`node tools/poki-ready.mjs https://lavazombie7404.github.io/3D-hotel-simulator/?debug`
+passes against the live build: the HUD fits and nothing overlaps at 640×360, the
+joystick moves the waiter on an emulated touch device, progress survives a
+reload, Escape freezes the simulation clock, and `window.__hotel` does not exist
+when the game is served from anything other than localhost.
+
+Eight suites in total, all passing:
+`smoke`, `upper-floors`, `waiter`, `elevator`, `rebirth`, `staff-restaurant`,
+`poki-ready`, plus `thumbnail` for the promo shot.
 
 ## Still missing
 

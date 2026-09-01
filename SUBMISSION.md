@@ -94,7 +94,7 @@ incremental, upgrade, restaurant
 
 ## Technical
 
-- **Engine:** none. Hand-written JavaScript on top of Three.js r180.
+- **Engine:** none. Plain JavaScript on top of Three.js r180.
 - **Audio:** synthesised with Web Audio at runtime; there are no sound files.
 - **Size:** ~973 KB total (788 KB vendored Three.js, minified, plus the game).
   No build step, no bundler.

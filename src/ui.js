@@ -245,24 +245,36 @@ export function refreshRoomPanel() {
 
 // --- staff ------------------------------------------------------------------
 
+/**
+ * Only touch innerHTML when the text really changed. Rewriting a button's
+ * contents five times a second churns the DOM for nothing and can swallow a
+ * click that lands between the rewrite and the mouseup.
+ */
+function setHTML(node, html) {
+  if (node.dataset.html !== html) {
+    node.dataset.html = html;
+    node.innerHTML = html;
+  }
+}
+
 function refreshStaff() {
   const info = handlers.staffInfo();
   el.staffTitle.textContent = 'Staff on this floor - next hire $' +
     staffCost().toLocaleString('en-US');
-  el.hirePorter.innerHTML = '&#127974; Porter <b>' + info.porters + '</b>';
-  el.hireCleaner.innerHTML = '&#129529; Cleaner <b>' + info.cleaners + '</b>';
+  setHTML(el.hirePorter, '&#127974; Porter <b>' + info.porters + '</b>');
+  setHTML(el.hireCleaner, '&#129529; Cleaner <b>' + info.cleaners + '</b>');
   el.hirePorter.disabled = !info.canPorter;
   el.hireCleaner.disabled = !info.canCleaner;
 
   const lvl = state.restaurantLevel;
   if (lvl >= C.REST_MAX_LEVEL) {
-    el.restaurant.innerHTML = '&#127860; Restaurant maxed';
+    setHTML(el.restaurant, '&#127860; Restaurant maxed');
     el.restaurant.disabled = true;
   } else {
     const cost = restaurantCost();
-    el.restaurant.innerHTML = '&#127860; ' +
+    setHTML(el.restaurant, '&#127860; ' +
       (lvl === 0 ? 'Build restaurant' : 'Restaurant Lv ' + lvl) +
-      ' &mdash; $' + cost.toLocaleString('en-US');
+      ' &mdash; $' + cost.toLocaleString('en-US'));
     el.restaurant.disabled = state.money < cost;
   }
   el.restaurant.title = lvl === 0

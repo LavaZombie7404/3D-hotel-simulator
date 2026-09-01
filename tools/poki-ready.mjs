@@ -47,17 +47,38 @@ function watch(page, errors) {
   await page.waitForTimeout(1500);
 
   const fits = await page.evaluate(() => {
-    const ids = ['money-panel', 'top-right', 'stats', 'room-panel'];
-    const bad = [];
+    const ids = ['money-panel', 'top-right', 'stats', 'room-panel', 'staff-panel',
+                 'objective', 'hint', 'lift-btn', 'stick'];
+    const boxes = [];
+    const outside = [];
     for (const id of ids) {
-      const r = document.getElementById(id).getBoundingClientRect();
-      if (r.right > innerWidth + 1 || r.bottom > innerHeight + 1 || r.left < -1 || r.top < -1) {
-        bad.push(`${id} ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`);
+      const el = document.getElementById(id);
+      if (!el || el.offsetParent === null) continue;      // not currently shown
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.right > innerWidth + 1 || r.bottom > innerHeight + 1 ||
+          r.left < -1 || r.top < -1) {
+        outside.push(`${id} at ${Math.round(r.left)},${Math.round(r.top)}`);
+      }
+      boxes.push({ id, r });
+    }
+    // Panels must not sit on top of each other either: fitting on screen is not
+    // the same as being readable.
+    const overlaps = [];
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i].r, b = boxes[j].r;
+        const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (w > 4 && h > 4) overlaps.push(`${boxes[i].id}/${boxes[j].id}`);
       }
     }
-    return { bad, w: innerWidth, h: innerHeight };
+    return { outside, overlaps, checked: boxes.length };
   });
-  check('the HUD fits inside 640x360', fits.bad.length === 0, fits.bad.join(' | ') || 'every panel is inside');
+  check('the HUD fits inside 640x360', fits.outside.length === 0,
+        fits.outside.join(' | ') || `${fits.checked} panels, all inside`);
+  check('no HUD panel covers another', fits.overlaps.length === 0,
+        fits.overlaps.join(' | ') || 'nothing overlaps');
   check('no console errors at 640x360', errors.length === 0, errors[0] || '');
   await page.screenshot({ path: `${OUT}/50-640x360.png` });
   await ctx.close();

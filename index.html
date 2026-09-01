@@ -83,14 +83,18 @@
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
 
   /* --- staff --- */
-  #staff-panel { position: absolute; bottom: 132px; right: 12px; width: 260px; }
+  /* One column, bottom right: the lift button, staff, then the room panel. */
+  #right-column {
+    position: absolute; right: 12px; bottom: 12px; z-index: 15;
+    width: 260px; display: flex; flex-direction: column; gap: 8px;
+  }
   #staff-title { font-size: 12px; color: var(--dim); margin-bottom: 6px; }
   #staff-panel .row button { flex: 1; font-size: 12px; padding: 6px 4px; }
   #staff-panel .row button b { color: var(--gold); }
   #restaurant { width: 100%; margin-top: 5px; font-size: 12px; }
 
   /* --- room panel --- */
-  #room-panel { position: absolute; bottom: 12px; right: 12px; width: 260px; }
+  #room-panel { width: 100%; }
   #room-title { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
   #room-sub { font-size: 12px; color: var(--dim); margin-bottom: 9px; }
   #room-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.09); overflow: hidden; margin-bottom: 9px; }
@@ -121,6 +125,8 @@
     box-shadow: 0 4px 18px rgba(0,0,0,.45); white-space: nowrap; z-index: 12;
   }
   #objective.on { display: block; }
+  /* Two instruction boxes at once is noise; the objective wins. */
+  #objective.on ~ #hint { display: none; }
 
   /* Money ticks up with a small pulse, so earnings register. */
   #money { transition: transform .12s ease-out; transform-origin: left center; }
@@ -149,11 +155,8 @@
     margin: -24px 0 0 -24px; border-radius: 50%;
     background: rgba(255,210,75,.75); box-shadow: 0 2px 10px rgba(0,0,0,.5);
   }
-  #lift-btn {
-    position: absolute; right: 18px; bottom: 18px; display: none; z-index: 15;
-    font-size: 15px; padding: 12px 20px;
-  }
-  #lift-btn.on { display: block; }
+  #lift-btn { display: none; font-size: 15px; padding: 11px 20px; }
+  #lift-btn.on { display: block; background: var(--gold); color: #17181a; font-weight: 600; }
 
   /* --- small screens: Poki scales the canvas down to 640x360 --- */
   @media (max-width: 900px), (max-height: 560px) {
@@ -178,8 +181,9 @@
     #stats .line.extra, #stats .line.extra2 { display: none; }
     #next-floor { display: none; }
     #rebirth-box { margin-top: 6px; padding-top: 6px; }
-    #room-panel { width: 190px; padding: 7px 9px; bottom: 8px; right: 8px; }
-    #staff-panel { width: 190px; padding: 6px 8px; bottom: 104px; right: 8px; }
+    #right-column { right: 8px; bottom: 8px; width: 190px; gap: 6px; }
+    #room-panel { padding: 7px 9px; }
+    #staff-panel { padding: 6px 8px; }
     #staff-title { font-size: 10px; margin-bottom: 4px; }
     #staff-panel .row button { font-size: 10px; padding: 5px 3px; }
     #restaurant { font-size: 10px; padding: 5px 3px; margin-top: 4px; }
@@ -187,7 +191,22 @@
     #room-sub, #room-empty, #room-panel button { font-size: 11px; }
     #top-right { top: 8px; right: 8px; }
     #floors button { padding: 5px 7px; font-size: 11px; }
-    #hint { font-size: 10px; padding: 4px 8px; bottom: 8px; max-width: 52vw; left: 42%; }
+    /* Tucked into the bottom-left corner so it cannot sit on the room panel.
+       The `body` prefix is load-bearing: the base #hint rule is declared later
+       in this stylesheet, and a media query adds no specificity of its own. */
+    body #hint {
+      font-size: 10px; padding: 4px 8px; bottom: 8px; top: auto;
+      left: 8px; right: auto; transform: none; text-align: left; max-width: 44vw;
+    }
+    body.touch #hint { left: 108px; max-width: calc(100vw - 310px); }
+    #lift-btn { font-size: 12px; padding: 8px 12px; }
+
+    /* The objective takes the same corner, and outranks the hint while it is up. */
+    body #objective {
+      top: auto; bottom: 8px; left: 8px; transform: none;
+      max-width: 44vw; white-space: normal; text-align: left;
+    }
+    body.touch #objective { left: 108px; max-width: calc(100vw - 310px); }
     #stick { width: 92px; height: 92px; left: 10px; bottom: 10px; }
     #stick > i { width: 38px; height: 38px; margin: -19px 0 0 -19px; }
   }
@@ -245,6 +264,9 @@
   </div>
 </div>
 
+<div id="right-column">
+<button id="lift-btn">Call lift</button>
+
 <div id="staff-panel" class="panel">
   <div id="staff-title">Staff on this floor</div>
   <div class="row">
@@ -262,6 +284,7 @@
     <div id="room-bar"><i></i></div>
     <button id="room-action">-</button>
   </div>
+</div>
 </div>
 
 <div id="objective"></div>
@@ -283,7 +306,6 @@
   stand in the reception circle for faster check-in
 </div>
 <div id="stick"><i></i></div>
-<button id="lift-btn">Call lift</button>
 <div id="popups"></div>
 
 <script type="module" src="./src/main.js"></script>

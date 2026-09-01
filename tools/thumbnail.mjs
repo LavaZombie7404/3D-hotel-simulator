@@ -23,7 +23,13 @@ await page.evaluate(() => {
   h.unlockAll(5);
   h.state.boosters = 40;
   h.setSpeed(4);
+  // Staff on the floor and a full restaurant, so the shot shows the whole game.
+  for (let f = 0; f < 3; f++) { h.hire(f, 0); h.hire(f, 1); }
 });
+for (let i = 0; i < 6; i++) {
+  await page.waitForTimeout(350);
+  await page.click('#restaurant');
+}
 await page.waitForTimeout(25000);
 
 const busiest = await page.evaluate(() => {

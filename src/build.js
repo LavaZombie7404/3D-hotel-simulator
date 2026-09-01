@@ -76,7 +76,12 @@ function mergeInto(group, list, material) {
 const matSlab   = new THREE.MeshLambertMaterial({ color: 0x4a5058 });
 const matWall   = new THREE.MeshLambertMaterial({ color: 0xd9d4c9 });
 const matWood   = new THREE.MeshLambertMaterial({ color: 0x8b6f47 });
-const matGround = new THREE.MeshLambertMaterial({ color: 0x27331f });
+const matGround = new THREE.MeshLambertMaterial({ color: 0x38502c });
+const matBank   = new THREE.MeshLambertMaterial({ color: 0x6b6a4a });
+const matWater  = new THREE.MeshLambertMaterial({ color: 0x2f6f8f });
+const matTrunk  = new THREE.MeshLambertMaterial({ color: 0x5a4029 });
+const matLeaf   = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const matRock   = new THREE.MeshLambertMaterial({ color: 0x7d7f82 });
 const matRoad   = new THREE.MeshLambertMaterial({ color: 0x2a2c30 });
 const matSteel  = new THREE.MeshLambertMaterial({ color: 0x9aa3ad });
 // The per-instance colour comes from InstancedMesh.instanceColor and is
@@ -97,14 +102,39 @@ export function buildScene(scene) {
   setActiveFloor(0);
 }
 
-// --- ground, road, lift ------------------------------------------------------
+// --- ground, road, river, trees ---------------------------------------------
+
+// A tiny deterministic generator, so the scenery is identical on every load
+// and screenshots stay comparable between runs.
+function makeRandom(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+const BUILD_X0 = C.LOBBY_X0 - 4;
+const BUILD_X1 = C.CORRIDOR_X1 + 4;
+const RIVER_Z = -34;
+const RIVER_W = 13;
+
+/** Is this spot free of the hotel, the access road and the river? */
+function freeGround(x, z) {
+  if (x > BUILD_X0 && x < BUILD_X1 && Math.abs(z) < C.BUILD_Z + 4) return false;
+  if (x < C.LOBBY_X0 && Math.abs(z) < 6) return false;              // the road
+  if (Math.abs(z - RIVER_Z) < RIVER_W / 2 + 3) return false;        // the river
+  return true;
+}
 
 function buildEnvironment(scene) {
   const g = new THREE.Group();
   scene.add(g);
   gfx.always = g;
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 150), matGround);
+  buildSky(scene);
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(420, 340), matGround);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -C.SLAB_T - 0.02;
   ground.matrixAutoUpdate = false;
@@ -112,15 +142,117 @@ function buildEnvironment(scene) {
   g.add(ground);
 
   // The access road up to the entrance.
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(28, 7), matRoad);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(40, 7), matRoad);
   road.rotation.x = -Math.PI / 2;
-  road.position.set(C.LOBBY_X0 - 14, -C.SLAB_T - 0.01, 0);
+  road.position.set(C.LOBBY_X0 - 20, -C.SLAB_T - 0.01, 0);
   road.matrixAutoUpdate = false;
   road.updateMatrix();
   g.add(road);
 
+  buildRiver(g);
+  buildTrees(g);
+
   // The lift is built per floor (see buildFloor): otherwise the posts and
   // plates of the other floors would show through the active one.
+}
+
+/** A gradient dome instead of a flat background colour. */
+function buildSky(scene) {
+  const geo = new THREE.SphereGeometry(320, 24, 16);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const top = new THREE.Color(0x1e3350);
+  const horizon = new THREE.Color(0x6d8ba6);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    // Bias the blend downwards so most of the visible dome is the lighter band.
+    const t = Math.min(1, Math.max(0, pos.getY(i) / 320)) ** 0.55;
+    c.copy(horizon).lerp(top, t);
+    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const sky = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false,
+  }));
+  sky.matrixAutoUpdate = false;
+  sky.updateMatrix();
+  scene.add(sky);
+}
+
+/** A river running behind the hotel, with a shallow bank around it. */
+function buildRiver(g) {
+  const bank = new THREE.Mesh(new THREE.PlaneGeometry(420, RIVER_W + 5), matBank);
+  bank.rotation.x = -Math.PI / 2;
+  bank.position.set(0, -C.SLAB_T + 0.01, RIVER_Z);
+  bank.matrixAutoUpdate = false;
+  bank.updateMatrix();
+  g.add(bank);
+
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(420, RIVER_W), matWater);
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(0, -C.SLAB_T + 0.02, RIVER_Z);
+  water.matrixAutoUpdate = false;
+  water.updateMatrix();
+  g.add(water);
+}
+
+/**
+ * Trees and rocks, scattered outside the hotel. Everything is instanced, so the
+ * whole landscape costs three draw calls no matter how much of it there is.
+ */
+function buildTrees(g) {
+  const rand = makeRandom(20260901);
+  const spots = [];
+  for (let i = 0; i < 900 && spots.length < 150; i++) {
+    const x = (rand() - 0.5) * 300;
+    const z = (rand() - 0.5) * 210;
+    if (!freeGround(x, z)) continue;
+    spots.push({ x, z, s: 0.75 + rand() * 0.9, tint: rand(), lean: (rand() - 0.5) * 0.18 });
+  }
+
+  const trunkGeo = new THREE.CylinderGeometry(0.22, 0.34, 2.4, 5);
+  trunkGeo.translate(0, 1.2, 0);
+  const trunks = new THREE.InstancedMesh(trunkGeo, matTrunk, spots.length);
+
+  const leafGeo = new THREE.IcosahedronGeometry(1.7, 0);
+  leafGeo.translate(0, 3.3, 0);
+  const leaves = new THREE.InstancedMesh(leafGeo, matLeaf, spots.length);
+
+  const green = new THREE.Color();
+  spots.forEach((p, i) => {
+    _obj.position.set(p.x, -C.SLAB_T, p.z);
+    _obj.rotation.set(p.lean, p.tint * 6.283, p.lean * 0.7);
+    _obj.scale.setScalar(p.s);
+    _obj.updateMatrix();
+    trunks.setMatrixAt(i, _obj.matrix);
+    leaves.setMatrixAt(i, _obj.matrix);
+    // A spread of greens so the treeline is not one flat colour.
+    green.setHSL(0.26 + p.tint * 0.06, 0.38 + p.tint * 0.18, 0.22 + p.tint * 0.12);
+    leaves.setColorAt(i, green);
+  });
+  for (const m of [trunks, leaves]) { m.matrixAutoUpdate = false; m.updateMatrix(); g.add(m); }
+
+  // A few boulders along the bank.
+  const rocks = [];
+  for (let i = 0; i < 400 && rocks.length < 40; i++) {
+    const x = (rand() - 0.5) * 260;
+    const z = RIVER_Z + (rand() - 0.5) * (RIVER_W + 12);
+    if (Math.abs(z - RIVER_Z) < RIVER_W / 2 - 1) continue;   // not in the water
+    if (!freeGround(x, z) && Math.abs(z - RIVER_Z) > RIVER_W) continue;
+    rocks.push({ x, z, s: 0.5 + rand() * 1.1, r: rand() * 6.283 });
+  }
+  const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+  const rockMesh = new THREE.InstancedMesh(rockGeo, matRock, rocks.length);
+  rocks.forEach((p, i) => {
+    _obj.position.set(p.x, -C.SLAB_T - 0.2, p.z);
+    _obj.rotation.set(0.3, p.r, 0.2);
+    _obj.scale.set(p.s * 1.3, p.s * 0.8, p.s);
+    _obj.updateMatrix();
+    rockMesh.setMatrixAt(i, _obj.matrix);
+  });
+  rockMesh.matrixAutoUpdate = false;
+  rockMesh.updateMatrix();
+  g.add(rockMesh);
 }
 
 // --- architecture of one floor --------------------------------------------------

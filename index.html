@@ -49,6 +49,7 @@
   #prestige:hover:not(:disabled) { background: rgba(168,92,224,.38); }
   .confirm { background: rgba(224,87,79,.25) !important; border-color: rgba(224,87,79,.6) !important; }
   #next-floor { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  #mute { padding: 5px 9px; line-height: 1; font-size: 15px; }
 
   /* --- floor buttons --- */
   #top-right { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
@@ -188,6 +189,7 @@
   <div class="panel">
     <div class="row" id="floors"></div>
   </div>
+  <button id="mute" title="Sound on">&#128266;</button>
 </div>
 
 <div id="stats" class="panel">

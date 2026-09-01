@@ -22,6 +22,11 @@ import {
   lift, callFromFloor, callFromCabin, liftReady, takeSlot, freeSlot,
   slotX, slotZ, waitX, waitZ, resetLift,
 } from './elevator.js';
+import { sfxCheckIn, sfxCash, sfxTip, sfxRequest, sfxLost } from './audio.js';
+
+// Only make noise for things happening on the floor you are looking at,
+// otherwise six floors of hotel all ring at once.
+const onScreen = (floor) => floor === state.activeFloor;
 
 // --- states ------------------------------------------------------------------
 const S_TO_QUEUE = 0;   // walking to their spot in the queue
@@ -162,6 +167,7 @@ export function serveRoom(r) {
   state.tips += tip;
   state.servedRequests++;
   pushPopup(rooms.cx[r], rooms.cy[r] + 2.4, rooms.cz[r], tip);
+  if (onScreen(rooms.floor[r])) sfxTip();
   return tip;
 }
 
@@ -392,6 +398,7 @@ function checkIn(g) {
   earn(fee);
   state.servedGuests++;
   pushPopup(gX[g], gY[g] + 2.0, gZ[g], fee);
+  if (onScreen(0)) sfxCheckIn();
 
   if (assignRoom(g)) return;
 
@@ -416,6 +423,7 @@ function checkOut(g) {
   earn(amount);
   state.checkouts++;
   pushPopup(rooms.cx[r], rooms.cy[r] + 2.2, rooms.cz[r], amount);
+  if (onScreen(rooms.floor[r])) sfxCash(rooms.level[r]);
 
   rooms.occupant[r] = -1;
   state.doorsDirty = true;
@@ -501,6 +509,7 @@ export function simulate(dt) {
           if (gReqWait[g] <= 0 && gTimer[g] > C.REQ_TTL * 0.5) {
             gReqOn[g] = 1;
             gReqLife[g] = C.REQ_TTL;
+            if (onScreen(rooms.floor[gRoom[g]])) sfxRequest();
           }
         }
         if (gTimer[g] <= 0) checkOut(g);
@@ -557,6 +566,7 @@ function leaveQueue(g) {
 function giveUp(g) {
   freeWaitSlot(g);
   state.lostGuests++;
+  if (onScreen(0)) sfxLost();
   gState[g] = S_TO_EXIT;
   pathLobbyToExit(g);
 }

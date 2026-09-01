@@ -18,6 +18,9 @@ import { state } from './world.js';
 import { gfx } from './build.js';
 import { serveRoom, setServiceBoost } from './guests.js';
 import { lift, callFromFloor, callFromCabin, doorsOpen, MOVING } from './elevator.js';
+import { sfxStep } from './audio.js';
+
+let stepAcc = 0;   // distance walked since the last footstep
 
 // Touch input: the virtual joystick writes a direction in here and it is
 // merged with the keyboard in updatePlayer, so both schemes share one path.
@@ -236,6 +239,12 @@ export function updatePlayer(dt, camera, keys) {
       }
     }
     resolveCollisions();   // also when standing still, so he never stays stuck in a wall
+  }
+
+  // Footsteps, paced by distance rather than time so they match the stride.
+  if (player.moving && !player.inCabin) {
+    stepAcc += C.PLAYER_SPEED * dt;
+    if (stepAcc > 1.6) { stepAcc = 0; sfxStep(); }
   }
 
   // With the doors shut you cannot walk out of the cabin.

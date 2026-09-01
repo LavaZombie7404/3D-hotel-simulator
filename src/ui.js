@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 import * as THREE from '../vendor/three.module.min.js';
 import * as C from './config.js';
+import { sfxClick, sfxBuy, toggleMute, isMuted } from './audio.js';
 import {
   rooms, state, popupQueue,
   unlockCost, upgradeCost, payout, unlockedCount, occupiedCount, incomePerMinute,
@@ -88,6 +89,7 @@ export function initUI(cbs) {
   el.roomAction = $('room-action');
   el.perf = $('perf');
   el.pause = $('pause');
+  el.mute = $('mute');
   // Poki prefers short, visual guidance over a wall of text, so the hint
   // fades out once the player has had a chance to read it.
   setTimeout(() => $('hint').classList.add('gone'), 14000);
@@ -99,12 +101,20 @@ export function initUI(cbs) {
   for (let f = 0; f < C.FLOORS; f++) {
     const b = document.createElement('button');
     b.textContent = floorName(f);
-    b.addEventListener('click', () => handlers.onFloor(f));
+    b.addEventListener('click', () => { sfxClick(); handlers.onFloor(f); });
     el.floors.appendChild(b);
     el.floorBtns.push(b);
   }
 
-  el.roomAction.addEventListener('click', () => handlers.onRoomAction(state.selected));
+  el.roomAction.addEventListener('click', () => {
+    sfxBuy();
+    handlers.onRoomAction(state.selected);
+  });
+  el.mute.addEventListener('click', () => {
+    const m = toggleMute();
+    el.mute.textContent = m ? '\u{1F507}' : '\u{1F50A}';
+    el.mute.title = m ? 'Sound off' : 'Sound on';
+  });
   $('resume').addEventListener('click', () => handlers.onResume());
   armButton(el.rebirth, 'Sure? You lose everything — click again', () => handlers.onRebirth());
   armButton(el.prestige, 'Sure? Click again', () => handlers.onPrestige());
@@ -117,6 +127,10 @@ export function initUI(cbs) {
     popPool.push(d);
     popLife[i] = 0;
   }
+}
+
+export function syncMuteButton() {
+  el.mute.textContent = isMuted() ? '\u{1F507}' : '\u{1F50A}';
 }
 
 export function setPaused(on) {

@@ -37,6 +37,9 @@ const busiest = await page.evaluate(() => {
   h.focusFloor(best);
   return { floor: best, occupied: bestOcc };
 });
+// Pull back and drop the angle so the river, the treeline and the sky are all
+// in frame, not just the floor plan.
+await page.evaluate(() => window.__hotel.setCamera(-4, 30, 56, 8, 2, -6));
 await page.waitForTimeout(2500);
 
 // Hide the interface so only the hotel is in frame.

@@ -25,13 +25,16 @@ import {
 import { lift, buildLift, updateLift, renderLift } from './elevator.js';
 import {
   initUI, refreshHUD, refreshPerf, refreshRoomPanel, setFloorButtons, updatePopups,
-  tickRebirthPrompt, setPaused, warnNoSave,
+  tickRebirthPrompt, setPaused, warnNoSave, syncMuteButton,
 } from './ui.js';
 import {
   initPoki, loadingFinished, gameplayStart, gameplayStop, commercialBreak, adInProgress,
 } from './poki.js';
 import { loadGame, saveGame, canSave } from './save.js';
 import { initTouch, isTouch, releaseStick, updateLiftButton } from './touch.js';
+import {
+  initAudio, suspendAudio, resumeAudio, sfxRebirth, sfxPrestige, sfxClick,
+} from './audio.js';
 
 // --- renderer ---------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -41,8 +44,9 @@ renderer.shadowMap.enabled = false;          // shadows are not worth the cost h
 document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1014);
-scene.fog = new THREE.Fog(0x0d1014, 95, 200);
+// The sky dome in build.js provides the backdrop; the fog colour matches its
+// horizon band so distant scenery melts into it.
+scene.fog = new THREE.Fog(0x6d8ba6, 110, 250);
 
 // --- top-down camera --------------------------------------------------------
 const CENTER = new THREE.Vector3((C.LOBBY_X0 + C.CORRIDOR_X1) / 2 + 2, 0, 0);
@@ -61,7 +65,7 @@ controls.maxPolarAngle = 1.15;                // ~66°, never down to eye level
 controls.update();
 
 // --- lights -----------------------------------------------------------------
-scene.add(new THREE.HemisphereLight(0xc6dcff, 0x2a2f26, 1.15));
+scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x40502f, 1.1));
 const sun = new THREE.DirectionalLight(0xfff2dd, 1.45);
 sun.position.set(34, 60, 26);
 scene.add(sun);
@@ -118,8 +122,8 @@ initUI({
     }
     refreshRoomPanel();
   },
-  onRebirth: () => resetAfter(doRebirth()),
-  onPrestige: () => resetAfter(doPrestige()),
+  onRebirth: () => { if (doRebirth()) { sfxRebirth(); resetAfter(true); } },
+  onPrestige: () => { if (doPrestige()) { sfxPrestige(); resetAfter(true); } },
   onResume: () => setPause(false),
 });
 
@@ -131,6 +135,7 @@ initTouch({
     else callLiftHere();
   },
 });
+syncMuteButton();
 if (!canSave) warnNoSave();
 setFloorButtons();
 refreshRoomPanel();
@@ -158,6 +163,7 @@ function resetAfter(happened) {
  * a commercial break only when gameplay resumes from a pause.
  */
 function firstInput() {
+  initAudio();          // browsers only allow audio after a real gesture
   if (started || paused || adInProgress()) return;
   started = true;
   gameplayStart();
@@ -170,11 +176,17 @@ function setPause(on) {
   if (on) {
     keys.clear();
     releaseStick();
+    suspendAudio();
     gameplayStop();
     saveGame();
-  } else if (started) {
-    // Resuming is the natural break: show an ad, then hand control back.
-    commercialBreak(() => keys.clear(), () => gameplayStart());
+  } else {
+    resumeAudio();
+    if (started) {
+      // Resuming is the natural break: show an ad, then hand control back.
+      // Audio stays down for the duration so it cannot bleed over the ad.
+      commercialBreak(() => { keys.clear(); suspendAudio(); },
+                      () => { resumeAudio(); gameplayStart(); });
+    }
   }
 }
 
@@ -304,6 +316,13 @@ if (DEV) window.__hotel = {
   rebirth: () => resetAfter(doRebirth()),
   prestige: () => resetAfter(doPrestige()),
   setSpeed(s) { speed = s; },
+  /** Frame a specific shot; used by the thumbnail tool. */
+  setCamera(px, py, pz, tx, ty, tz) {
+    follow = false;
+    camera.position.set(px, py, pz);
+    controls.target.set(tx, ty, tz);
+    controls.update();
+  },
   save: saveGame,
   load: loadGame,
 };

@@ -14,6 +14,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
 import * as C from './config.js';
 import { state } from './world.js';
+import { sfxLift, sfxDoor } from './audio.js';
 
 export const IDLE = 0, CLOSING = 1, MOVING = 2, OPENING = 3;
 
@@ -112,7 +113,11 @@ export function updateLift(dt) {
       lift.timer -= dt;
       if (lift.timer <= 0) {
         const t = pickTarget();
-        if (t >= 0) { lift.target = t; lift.mode = CLOSING; }
+        if (t >= 0) {
+          lift.target = t;
+          lift.mode = CLOSING;
+          if (lift.floor === state.activeFloor) sfxDoor();
+        }
         else lift.timer = 0.25;        // nobody is calling: keep waiting
       }
       break;
@@ -130,6 +135,7 @@ export function updateLift(dt) {
         lift.y = ty;
         lift.floor = lift.target;
         lift.mode = OPENING;
+        if (lift.floor === state.activeFloor) sfxLift();
       } else {
         lift.y += Math.sign(dy) * step;
       }
@@ -188,6 +194,12 @@ export function buildLift(scene) {
 }
 
 export function renderLift() {
+  // Hidden when it is not near the floor you are looking at - otherwise the
+  // cabin appears to hang in mid-air above an empty plot.
+  const visible = Math.abs(lift.y - state.activeFloor * C.FLOOR_H) < C.FLOOR_H * 0.9;
+  cabin.visible = visible;
+  if (!visible) return;
+
   cabin.position.set(C.ELEV_X, lift.y, 0);
 
   const half = C.CABIN_HW * 0.95;

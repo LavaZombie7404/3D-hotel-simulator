@@ -1,4 +1,7 @@
-# 3D Hotel Simulator
+# Hotel Rush
+
+*A top-down hotel where you are not the owner in a spreadsheet — you are the
+waiter running the floors.*
 
 A top-down 3D hotel management game that runs in the browser with Three.js.
 No bundler, no build step — open it on a localhost and it works.
@@ -51,6 +54,10 @@ Ground floor rooms need no lift — you walk straight down the corridor.
 - **Room service.** While they are checked in, guests ring for the waiter: a
   gold diamond appears above the room. Walk in and you collect a tip of
   **$3 x the room level**. You have 14 seconds before the guest gives up.
+- **Cleaning.** A room is dirty after check-out and cannot be let again.
+  Housekeeping gets to it eventually; you clean it the moment you walk in, and
+  get paid a little for it. A dulled floor and a small brown marker show which
+  rooms are waiting.
 - **Reception.** While you stand in the gold circle in front of the desk,
   check-in runs 2.5 times faster (1.1s → 0.44s per guest). When the hotel is
   busy the queue grows faster than reception can clear it on its own — that is
@@ -58,6 +65,20 @@ Ground floor rooms need no lift — you walk straight down the corridor.
 
 So you run between the desk and the rooms: stand at reception while the line
 builds up, then do a lap of the floors to collect the tips.
+
+### Staff and the restaurant
+
+You do not have to do all of it forever.
+
+- **Porters** answer room service and **cleaners** turn rooms around. Each hire
+  works a single floor and never leaves it, which keeps them out of the lift and
+  makes hiring a decision you can reason about floor by floor. They walk at
+  2.6 m/s against your 6.2, so buying staff frees you up without making you
+  redundant — the front desk is still yours alone.
+- **The restaurant** is a wing off the south side of the lobby. Once built,
+  departing guests stop to eat before they leave and pay **$5 x its level** on
+  top of the room. Upgrading adds two more tables, so a bigger dining room feeds
+  more of the crowd at once.
 
 ### Money
 
@@ -128,12 +149,15 @@ it. While the doors are shut you cannot get out.
 
 There is no speed control: the simulation always runs in real time.
 
+Your hotel's name is yours: click it at the top left and it changes on the sign
+above the entrance too.
+
 Only one floor is shown at a time — otherwise, seen from above, the floors on
 top would cover everything. When you take the lift, the view follows you.
 
 ## How it is optimized
 
-The whole scene draws in about 11-24 draw calls, no matter how many guests are
+The whole scene draws in roughly 11-38 draw calls, no matter how many guests are
 in the hotel (and there can be up to 300):
 
 - **Every guest = 2 draw calls.** One `InstancedMesh` for the bodies and one
@@ -156,6 +180,12 @@ in the hotel (and there can be up to 300):
 - **The HUD is written at 5 Hz**, not every frame; the `+$` labels use a fixed
   pool of recycled DOM elements.
 - **Raycasting on click only**, never per frame.
+- **The landscape is three draw calls.** 150 trees, their trunks and the
+  boulders are instanced, scattered from a fixed seed so the scenery is
+  identical on every load.
+- **Sound is synthesised, not loaded.** Every effect is oscillators and an
+  envelope in `src/audio.js`, so audio costs zero bytes of download and makes no
+  external request. Events only play on the floor you are watching.
 - **The lift costs 2 draw calls**: the fixed parts of the cabin are merged into
   one mesh and the 4 door panels are an `InstancedMesh`.
 - **The waiter's collisions reuse the very rectangles the walls are built from**
@@ -201,6 +231,13 @@ src/build.js      scene construction, merged geometry, instances
 src/guests.js     the guest simulation + instanced rendering
 src/player.js     the waiter: movement, collisions, room service
 src/elevator.js   the lift cabin: calls, doors, seats, rendering
+src/staff.js      hired porters and cleaners
+src/audio.js      every sound effect, synthesised in code
+src/sign.js       the hotel name, drawn to a canvas texture
+src/tutorial.js   the first-run objectives
+src/save.js       localStorage progress
+src/poki.js       Poki SDK wrapper, no-op when the SDK is absent
+src/touch.js      virtual joystick and the contextual lift button
 src/ui.js         the HUD and the floating labels
 src/main.js       renderer, top-down camera, input, game loop
 vendor/           three.js + OrbitControls + BufferGeometryUtils (local)
@@ -216,6 +253,8 @@ node tools/upper-floors.mjs    # unlocks everything and checks the lift + floors
 node tools/waiter.mjs          # movement, collisions, tips, the reception boost
 node tools/elevator.mjs        # the cabin, the doors, passengers, and no gridlock
 node tools/rebirth.mjs         # rebirth, the floors at 10/15/20, prestige
+node tools/staff-restaurant.mjs # hired staff working alone, and the restaurant
+node tools/poki-ready.mjs      # mobile, 640x360, saving, pause, no debug code
 ```
 
 They all write screenshots to `tools/shots/`.

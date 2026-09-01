@@ -26,7 +26,11 @@ export const UPPER_X0 = -8;       // where the upper floor slabs start (lift lan
 export const DOOR_W = 1.8;        // doorway gap in the corridor-facing wall
 
 // --- Lift ---
+// The shaft sits off to one side of the lobby rather than straddling the
+// straight line from the lobby to the corridor - standing on that line meant
+// constantly bumping into it, and stepping into the cabin by accident.
 export const ELEV_X = -2.6;
+export const ELEV_Z = -5.5;
 export const ELEV_HW = 1.9;       // half width of the shaft
 export const CABIN_HW = 1.55;     // half width of the cabin
 export const LIFT_CAPACITY = 14;  // base seats in the cabin (grow with boosters)
@@ -112,6 +116,43 @@ export const REQ_DELAY_MIN = 2.0;     // how long after check-in they may ring
 export const REQ_DELAY_MAX = 7.0;
 export const REQ_TTL = 14;            // how long the guest waits for the waiter
 export const TIP_PER_LEVEL = 3;       // tip = TIP_PER_LEVEL * room level
+
+// After a guest checks out the room is dirty and cannot be let again.
+// Housekeeping clears it on its own, slowly; walking in cleans it at once.
+// The wait shrinks as boosters grow, so late hotels are not choked by it.
+export const CLEAN_TIME = 10;         // seconds for housekeeping to do it
+export const CLEAN_PAY_PER_LEVEL = 1; // small payment for cleaning it yourself
+
+// --- Restaurant ---
+// A wing off the south side of the lobby. Guests eat on their way out, which
+// turns the lobby into a second source of income instead of just a corridor.
+export const REST_X0 = -17;
+export const REST_X1 = -3;
+export const REST_Z0 = -21;      // far wall
+export const REST_Z1 = -9.5;     // opens into the lobby
+export const REST_DOOR_X = -11;  // middle of the gap in the lobby wall
+export const REST_DOOR_W = 3.4;
+
+export const MAX_SEATS = 18;
+export const SEAT_COLS = 6;
+export const SEATS_PER_LEVEL = 2;      // seats = SEATS_PER_LEVEL * level
+export const DINE_TIME = 9;            // seconds at the table
+export const DINE_CHANCE = 0.55;       // how often a departing guest stops to eat
+export const DINE_PAY_PER_LEVEL = 5;   // $ per level, on top of the room
+export const REST_COST_BASE = 400;
+export const REST_COST_GROWTH = 1.8;
+export const REST_MAX_LEVEL = 9;
+
+// --- Hired staff ---
+// Porters answer room service, cleaners turn rooms around. Each hire works a
+// single floor. They are slower than you, so automation frees you up without
+// making you redundant - reception is still yours alone.
+export const MAX_STAFF = 48;
+export const MAX_STAFF_PER_KIND = 3;   // per floor, per kind
+export const STAFF_SPEED = 2.6;        // m/s, against the player's 6.2
+export const STAFF_WORK_PAUSE = 1.0;   // seconds spent doing the job
+export const STAFF_COST_BASE = 220;
+export const STAFF_COST_GROWTH = 1.45;
 
 // The circle in front of the desk: standing in it speeds up check-in.
 export const DESK_ZONE_X = DESK_X;

@@ -16,7 +16,7 @@ import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
 import * as C from './config.js';
 import { state } from './world.js';
 import { gfx } from './build.js';
-import { serveRoom, setServiceBoost } from './guests.js';
+import { serveRoom, setServiceBoost, cleanRoom } from './guests.js';
 import { lift, callFromFloor, callFromCabin, doorsOpen, MOVING } from './elevator.js';
 import { sfxStep } from './audio.js';
 
@@ -142,7 +142,7 @@ function resolveCollisions() {
  */
 function inCabinNow() {
   const inside = Math.abs(player.x - C.ELEV_X) < C.CABIN_HW - 0.1 &&
-                 Math.abs(player.z) < C.CABIN_HW - 0.1;
+                 Math.abs(player.z - C.ELEV_Z) < C.CABIN_HW - 0.1;
   if (player.inCabin) return inside;
   return inside && lift.mode !== MOVING && Math.abs(player.y - lift.y) < 0.6;
 }
@@ -150,7 +150,7 @@ function inCabinNow() {
 /** In the lift shaft, but with no cabin at his floor. */
 export function inShaft() {
   return Math.abs(player.x - C.ELEV_X) < C.ELEV_HW - 0.1 &&
-         Math.abs(player.z) < C.ELEV_HW - 0.1;
+         Math.abs(player.z - C.ELEV_Z) < C.ELEV_HW - 0.1;
 }
 
 /** The room the waiter is standing in, or -1 if he is in a corridor / lobby. */
@@ -251,15 +251,15 @@ export function updatePlayer(dt, camera, keys) {
   if (player.inCabin && !doorsOpen()) {
     const lim = C.CABIN_HW - 0.15;
     player.x = Math.max(C.ELEV_X - lim, Math.min(C.ELEV_X + lim, player.x));
-    player.z = Math.max(-lim, Math.min(lim, player.z));
+    player.z = Math.max(C.ELEV_Z - lim, Math.min(C.ELEV_Z + lim, player.z));
   }
 
   // Do not let the waiter wander off into the field if he walks out the front.
   if (player.x < C.SPAWN_X) player.x = C.SPAWN_X;
 
-  // Room service: walking into the room resolves the request.
+  // Walking into a room both answers its room service call and cleans it.
   const r = roomUnderPlayer();
-  if (r >= 0) serveRoom(r);
+  if (r >= 0) { serveRoom(r); cleanRoom(r); }
 
   // The zone in front of the reception desk.
   const dx = player.x - C.DESK_ZONE_X, dz = player.z - C.DESK_ZONE_Z;

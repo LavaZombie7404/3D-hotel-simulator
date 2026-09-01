@@ -10,6 +10,7 @@ import {
   rooms, state, popupQueue,
   unlockCost, upgradeCost, payout, unlockedCount, occupiedCount, incomePerMinute,
   incomeMult, canRebirth, canPrestige, rebirthGoal, nextFloorUnlock, floorAvailable,
+  dirtyCount, staffCost, restaurantCost, seatCount, dinePay,
 } from './world.js';
 
 const $ = (id) => document.getElementById(id);
@@ -76,6 +77,11 @@ export function initUI(cbs) {
   el.lost = $('st-lost');
   el.tips = $('st-tips');
   el.req = $('st-req');
+  el.dirty = $('st-dirty');
+  el.hirePorter = $('hire-porter');
+  el.hireCleaner = $('hire-cleaner');
+  el.staffTitle = $('staff-title');
+  el.restaurant = $('restaurant');
   el.stars = $('stars');
   el.starProgress = $('star-progress');
   el.rebirth = $('rebirth');
@@ -90,6 +96,7 @@ export function initUI(cbs) {
   el.perf = $('perf');
   el.pause = $('pause');
   el.mute = $('mute');
+  el.hotelName = $('hotel-name');
   // Poki prefers short, visual guidance over a wall of text, so the hint
   // fades out once the player has had a chance to read it.
   setTimeout(() => $('hint').classList.add('gone'), 14000);
@@ -105,6 +112,24 @@ export function initUI(cbs) {
     el.floors.appendChild(b);
     el.floorBtns.push(b);
   }
+
+  el.hirePorter.addEventListener('click', () => { sfxBuy(); handlers.onHire('porter'); });
+  el.hireCleaner.addEventListener('click', () => { sfxBuy(); handlers.onHire('cleaner'); });
+  el.restaurant.addEventListener('click', () => { sfxBuy(); handlers.onRestaurant(); });
+
+  el.hotelName.value = state.hotelName;
+  el.hotelName.addEventListener('input', () => {
+    state.hotelName = el.hotelName.value.slice(0, 22);
+    handlers.onRename();
+  });
+  // Empty is not a hotel name; put the old one back when they click away.
+  el.hotelName.addEventListener('blur', () => {
+    if (!state.hotelName.trim()) {
+      state.hotelName = 'Grand Hotel';
+      el.hotelName.value = state.hotelName;
+      handlers.onRename();
+    }
+  });
 
   el.roomAction.addEventListener('click', () => {
     sfxBuy();
@@ -127,6 +152,11 @@ export function initUI(cbs) {
     popPool.push(d);
     popLife[i] = 0;
   }
+}
+
+/** Puts a loaded or reset name back into the field. */
+export function syncHotelName() {
+  el.hotelName.value = state.hotelName;
 }
 
 export function syncMuteButton() {
@@ -213,6 +243,33 @@ export function refreshRoomPanel() {
   }
 }
 
+// --- staff ------------------------------------------------------------------
+
+function refreshStaff() {
+  const info = handlers.staffInfo();
+  el.staffTitle.textContent = 'Staff on this floor - next hire $' +
+    staffCost().toLocaleString('en-US');
+  el.hirePorter.innerHTML = '&#127974; Porter <b>' + info.porters + '</b>';
+  el.hireCleaner.innerHTML = '&#129529; Cleaner <b>' + info.cleaners + '</b>';
+  el.hirePorter.disabled = !info.canPorter;
+  el.hireCleaner.disabled = !info.canCleaner;
+
+  const lvl = state.restaurantLevel;
+  if (lvl >= C.REST_MAX_LEVEL) {
+    el.restaurant.innerHTML = '&#127860; Restaurant maxed';
+    el.restaurant.disabled = true;
+  } else {
+    const cost = restaurantCost();
+    el.restaurant.innerHTML = '&#127860; ' +
+      (lvl === 0 ? 'Build restaurant' : 'Restaurant Lv ' + lvl) +
+      ' &mdash; $' + cost.toLocaleString('en-US');
+    el.restaurant.disabled = state.money < cost;
+  }
+  el.restaurant.title = lvl === 0
+    ? 'Departing guests will stop to eat'
+    : seatCount() + ' tables, $' + dinePay() + ' per meal';
+}
+
 // --- rebirth / prestige -----------------------------------------------------
 
 function boosterLabel(n) {
@@ -270,8 +327,17 @@ function refreshRebirth() {
 // --- HUD --------------------------------------------------------------------
 
 /** The "slow" HUD refresh, called about 5 times per second. */
+let lastMoney = -1;
+
 export function refreshHUD(guests, queueLen, requests) {
-  el.money.textContent = '$' + Math.floor(state.money).toLocaleString('en-US');
+  const money = Math.floor(state.money);
+  el.money.textContent = '$' + money.toLocaleString('en-US');
+  // A small pop whenever the number goes up, so income is felt not just read.
+  if (lastMoney >= 0 && money > lastMoney) {
+    el.money.classList.add('bump');
+    setTimeout(() => el.money.classList.remove('bump'), 120);
+  }
+  lastMoney = money;
   el.income.textContent = '$' + Math.round(incomePerMinute()).toLocaleString('en-US') + ' / min';
   el.guests.textContent = guests;
   el.occ.textContent = occupiedCount() + ' / ' + unlockedCount();
@@ -280,6 +346,8 @@ export function refreshHUD(guests, queueLen, requests) {
   el.lost.textContent = state.lostGuests;
   el.tips.textContent = '$' + Math.floor(state.tips).toLocaleString('en-US');
   el.req.textContent = requests;
+  el.dirty.textContent = dirtyCount();
+  refreshStaff();
   refreshRebirth();
   setFloorButtons();
   refreshRoomPanel();

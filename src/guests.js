@@ -16,13 +16,14 @@ import * as THREE from '../vendor/three.module.min.js';
 import * as C from './config.js';
 import {
   rooms, state, earn, findBestFreeRoom, arrivalInterval, payout, pushPopup,
-  checkInFee, tipFor, serviceTime,
+  checkInFee, tipFor, serviceTime, cleanTime, cleanPay, dirtyCount,
+  takeSeat, freeSeat, seatX, seatZ, dinePay,
 } from './world.js';
 import {
   lift, callFromFloor, callFromCabin, liftReady, takeSlot, freeSlot,
-  slotX, slotZ, waitX, waitZ, resetLift,
+  slotX, slotZ, waitX, waitZ, resetLift, LANDING_Z,
 } from './elevator.js';
-import { sfxCheckIn, sfxCash, sfxTip, sfxRequest, sfxLost } from './audio.js';
+import { sfxCheckIn, sfxCash, sfxTip, sfxRequest, sfxLost, sfxClean } from './audio.js';
 
 // Only make noise for things happening on the floor you are looking at,
 // otherwise six floors of hotel all ring at once.
@@ -38,6 +39,8 @@ const S_STAY     = 5;   // checked in and staying
 const S_TO_EXIT  = 6;   // leaving the hotel
 const S_LIFT_WAIT = 7;  // waiting for the lift on the landing
 const S_LIFT_RIDE = 8;  // inside the cabin
+const S_TO_TABLE  = 9;  // heading for a table in the restaurant
+const S_EATING    = 10; // at the table
 
 const N = C.MAX_GUESTS;
 
@@ -61,6 +64,7 @@ const gDest  = new Uint8Array(N);      // which floor they want
 const gAfter = new Uint8Array(N);      // 0 = to the room, 1 = to the exit
 const gSlot  = new Int8Array(N);       // seat in the cabin, -1 = not in the lift
 const gWaitK = new Uint8Array(N);      // so they do not all stand on the same spot
+const gSeat  = new Int8Array(N);       // restaurant table, -1 = not dining
 
 // Room service: every checked-in guest rings for the waiter once.
 const gReqWait = new Float32Array(N);  // time left until they ring
@@ -123,6 +127,7 @@ export function resetGuests() {
   serviceMul = 1;
   gReqOn.fill(0);
   gSlot.fill(-1);
+  gSeat.fill(-1);
   resetLift();
 }
 
@@ -131,6 +136,26 @@ export function queueLength() { return queue.length; }
 
 /** The waiter in front of the desk => faster check-in. */
 export function setServiceBoost(on) { serviceMul = on ? C.SERVICE_BOOST : 1; }
+
+/**
+ * The waiter cleans a room by walking into it. Instant, unlike housekeeping,
+ * and it pays a little. Returns what it paid, or 0 if there was nothing to do.
+ */
+export function cleanRoom(r) {
+  if (rooms.dirty[r] <= 0) return 0;
+  rooms.dirty[r] = 0;
+  state.doorsDirty = true;
+  state.roomsCleaned++;
+  const pay = cleanPay(rooms.level[r]);
+  if (pay > 0) {
+    earn(pay);
+    pushPopup(rooms.cx[r], rooms.cy[r] + 2.4, rooms.cz[r], pay);
+  }
+  if (rooms.floor[r] === state.activeFloor) sfxClean();
+  return pay;
+}
+
+export { dirtyCount };
 
 /** Is the room waiting for room service? (drives the marker above it) */
 export function roomHasRequest(r) {
@@ -141,7 +166,8 @@ export function roomHasRequest(r) {
 /** How many guests are in each state - for diagnostics and tests. */
 export function stateCounts() {
   const names = ['to_queue', 'in_queue', 'to_waiting', 'waiting_for_room',
-                 'to_room', 'staying', 'to_exit', 'waiting_for_lift', 'in_lift'];
+                 'to_room', 'staying', 'to_exit', 'waiting_for_lift', 'in_lift',
+                 'to_table', 'eating'];
   const out = {};
   for (const n of names) out[n] = 0;
   for (let a = 0; a < activeCount; a++) out[names[gState[active[a]]]]++;
@@ -217,7 +243,7 @@ function pathToRoom(g, r) {
 function pathFromLiftToRoom(g, r) {
   const fy = rooms.cy[r];
   gY[g] = fy;
-  wp(g, 0, C.ELEV_X + C.ELEV_HW + C.LIFT_WAIT_GAP, fy, 0);   // steps out towards the corridor
+  wp(g, 0, C.ELEV_X, fy, LANDING_Z);        // steps out onto the landing
   wp(g, 1, C.CORRIDOR_X0 + 1.2, fy, 0);
   wp(g, 2, rooms.cx[r], fy, 0);
   wp(g, 3, rooms.cx[r], fy, rooms.doorZ[r]);
@@ -231,6 +257,17 @@ function startExit(g, r) {
   const f = rooms.floor[r];
   const fy = rooms.cy[r];
   if (f === 0) {
+    if (tryDine(g)) {
+      // Re-route: out of the room first, then across the lobby to the table.
+      const seat = gSeat[g];
+      wp(g, 0, rooms.cx[r], fy, rooms.doorZ[r]);
+      wp(g, 1, rooms.cx[r], fy, 0);
+      wp(g, 2, C.CORRIDOR_X0 + 1.2, fy, 0);
+      wp(g, 3, C.REST_DOOR_X, 0, C.REST_Z1 + 0.8);
+      wp(g, 4, seatX(seat), 0, seatZ(seat));
+      setPathLen(g, 5);
+      return;
+    }
     wp(g, 0, rooms.cx[r], fy, rooms.doorZ[r]);
     wp(g, 1, rooms.cx[r], fy, 0);
     wp(g, 2, C.CORRIDOR_X0 + 1.2, fy, 0);
@@ -251,10 +288,29 @@ function startExit(g, r) {
   gState[g] = S_LIFT_WAIT;
 }
 
+/**
+ * On the way out, a guest may stop to eat. Returns true if they were routed to
+ * a table instead of the door.
+ */
+function tryDine(g) {
+  if (state.restaurantLevel <= 0) return false;
+  if (Math.random() > C.DINE_CHANCE) return false;
+  const seat = takeSeat();
+  if (seat < 0) return false;                 // restaurant full
+  gSeat[g] = seat;
+  gY[g] = 0;
+  wp(g, 0, C.REST_DOOR_X, 0, C.REST_Z1 + 0.8);
+  wp(g, 1, seatX(seat), 0, seatZ(seat));
+  setPathLen(g, 2);
+  gState[g] = S_TO_TABLE;
+  return true;
+}
+
 /** Steps out of the cabin on the ground floor and leaves the hotel. */
 function pathFromLiftToExit(g) {
   gY[g] = 0;
-  wp(g, 0, C.ELEV_X - C.ELEV_HW - C.LIFT_WAIT_GAP, 0, 0);
+  if (tryDine(g)) return;
+  wp(g, 0, C.ELEV_X, 0, LANDING_Z);
   wp(g, 1, C.LOBBY_X0 + 1.5, 0, 0);
   wp(g, 2, C.SPAWN_X, 0, 0);
   setPathLen(g, 3);
@@ -289,6 +345,7 @@ function spawnGuest() {
   gAfter[g] = 0;
   gSlot[g] = -1;
   gWaitK[g] = g % C.LIFT_CAPACITY;
+  gSeat[g] = -1;
 
   // If reception has too long a line, the guest turns around in the doorway
   // and leaves. That keeps the queue bounded and lets the desk keep serving at
@@ -309,6 +366,7 @@ function spawnGuest() {
 
 function despawnGuest(g) {
   if (gSlot[g] >= 0) { freeSlot(gSlot[g]); gSlot[g] = -1; }
+  if (gSeat[g] >= 0) { freeSeat(gSeat[g]); gSeat[g] = -1; }
   const at = activeAt[g];
   const last = active[--activeCount];
   active[at] = last;
@@ -426,6 +484,7 @@ function checkOut(g) {
   if (onScreen(rooms.floor[r])) sfxCash(rooms.level[r]);
 
   rooms.occupant[r] = -1;
+  rooms.dirty[r] = cleanTime();      // housekeeping will get to it eventually
   state.doorsDirty = true;
   startExit(g, r);
   gRoom[g] = -1;
@@ -456,6 +515,13 @@ export function simulate(dt) {
     }
   } else {
     serviceTimer = 0;
+  }
+
+  // Housekeeping working through the dirty rooms on its own.
+  for (let r = 0; r < C.TOTAL_ROOMS; r++) {
+    if (rooms.dirty[r] <= 0) continue;
+    rooms.dirty[r] -= dt;
+    if (rooms.dirty[r] <= 0) { rooms.dirty[r] = 0; state.doorsDirty = true; }
   }
 
   // Every active guest.
@@ -543,6 +609,28 @@ export function simulate(dt) {
         }
         break;
       }
+
+      case S_TO_TABLE:
+        if (done) { gState[g] = S_EATING; gTimer[g] = C.DINE_TIME; }
+        break;
+
+      case S_EATING:
+        gTimer[g] -= dt;
+        if (gTimer[g] <= 0) {
+          const pay = dinePay();
+          earn(pay);
+          state.meansServed++;
+          pushPopup(gX[g], gY[g] + 2.0, gZ[g], pay);
+          if (state.activeFloor === 0) sfxCash(state.restaurantLevel);
+          freeSeat(gSeat[g]);
+          gSeat[g] = -1;
+          wp(g, 0, C.REST_DOOR_X, 0, C.REST_Z1 + 0.8);
+          wp(g, 1, C.LOBBY_X0 + 1.5, 0, 0);
+          wp(g, 2, C.SPAWN_X, 0, 0);
+          setPathLen(g, 3);
+          gState[g] = S_TO_EXIT;
+        }
+        break;
 
       case S_TO_EXIT:
         if (done) despawnGuest(g);

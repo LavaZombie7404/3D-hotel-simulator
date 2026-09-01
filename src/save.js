@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 import * as C from './config.js';
 import { rooms, state } from './world.js';
+import { serializeStaff, restoreStaff } from './staff.js';
 
 const KEY = 'hotel3d.save.v1';
 
@@ -39,6 +40,8 @@ export function saveGame() {
       rebirths: state.rebirths,
       maxRebirths: state.maxRebirths,
       prestige: state.prestige,
+      hotelName: state.hotelName,
+      tutorialDone: true,   // a save exists, so they have played before
       lifetimeEarned: state.lifetimeEarned,
       servedGuests: state.servedGuests,
       lostGuests: state.lostGuests,
@@ -46,6 +49,8 @@ export function saveGame() {
       tips: state.tips,
       floors: state.floorUnlocked,
       levels: Array.from(rooms.level),
+      staff: serializeStaff(),
+      restaurantLevel: state.restaurantLevel,
     }));
     return true;
   } catch {
@@ -74,6 +79,9 @@ export function loadGame() {
   state.rebirths = num(data.rebirths, 0);
   state.maxRebirths = num(data.maxRebirths, 0);
   state.prestige = num(data.prestige, 0);
+  if (typeof data.hotelName === 'string' && data.hotelName.trim()) {
+    state.hotelName = data.hotelName.slice(0, 22);
+  }
   state.lifetimeEarned = num(data.lifetimeEarned, 0);
   state.servedGuests = num(data.servedGuests, 0);
   state.lostGuests = num(data.lostGuests, 0);
@@ -90,6 +98,9 @@ export function loadGame() {
       rooms.occupant[r] = -1;
     }
   }
+
+  state.restaurantLevel = num(data.restaurantLevel, 0);
+  restoreStaff(data.staff);
 
   state.roomsDirty = true;
   state.doorsDirty = true;

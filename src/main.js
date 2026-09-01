@@ -9,7 +9,7 @@ import { OrbitControls } from '../vendor/addons/OrbitControls.js';
 import * as C from './config.js';
 import {
   state, rooms, initWorld, rollIncomeBucket, doRebirth, doPrestige, payout, floorAvailable,
-  tryUnlockRoom, tryUpgradeRoom, tryUnlockFloor,
+  tryUnlockRoom, tryUpgradeRoom, tryUnlockFloor, tryUpgradeRestaurant,
 } from './world.js';
 import {
   buildScene, setActiveFloor, refreshRooms, refreshDoorColors, pickRoom, updateSelection,
@@ -23,9 +23,15 @@ import {
   player, buildPlayer, updatePlayer, renderPlayer, resetPlayer, rideTo, canRide, callLiftHere,
 } from './player.js';
 import { lift, buildLift, updateLift, renderLift } from './elevator.js';
+import { buildSign, refreshSign } from './sign.js';
+import { buildTutorial, updateTutorial, skipTutorial } from './tutorial.js';
+import {
+  PORTER, CLEANER, buildStaffMeshes, updateStaff, renderStaff, hire, canHire,
+  staffOnFloor, resetStaff,
+} from './staff.js';
 import {
   initUI, refreshHUD, refreshPerf, refreshRoomPanel, setFloorButtons, updatePopups,
-  tickRebirthPrompt, setPaused, warnNoSave, syncMuteButton,
+  tickRebirthPrompt, setPaused, warnNoSave, syncMuteButton, syncHotelName,
 } from './ui.js';
 import {
   initPoki, loadingFinished, gameplayStart, gameplayStop, commercialBreak, adInProgress,
@@ -72,12 +78,16 @@ scene.add(sun);
 
 // --- world -------------------------------------------------------------------
 initWorld();
-loadGame();          // picks up a previous session, if there is one
+const returning = loadGame();   // picks up a previous session, if there is one
 resetGuests();
 buildScene(scene);
 buildGuestMeshes(scene);
 buildLift(scene);
 buildPlayer(scene);
+buildSign(scene);
+buildStaffMeshes(scene);
+buildTutorial(scene);
+if (returning) skipTutorial();
 
 // --- game state --------------------------------------------------------------
 // The simulation always runs in real time. This stays a variable only for the
@@ -125,6 +135,22 @@ initUI({
   onRebirth: () => { if (doRebirth()) { sfxRebirth(); resetAfter(true); } },
   onPrestige: () => { if (doPrestige()) { sfxPrestige(); resetAfter(true); } },
   onResume: () => setPause(false),
+  onRename: () => { refreshSign(); saveGame(); },
+  onRestaurant() {
+    if (tryUpgradeRestaurant()) { refreshRoomPanel(); saveGame(); }
+  },
+  onHire(kind) {
+    if (hire(state.activeFloor, kind === 'porter' ? PORTER : CLEANER)) {
+      refreshRoomPanel();
+      saveGame();
+    }
+  },
+  staffInfo: () => ({
+    porters: staffOnFloor(state.activeFloor, PORTER),
+    cleaners: staffOnFloor(state.activeFloor, CLEANER),
+    canPorter: canHire(state.activeFloor, PORTER),
+    canCleaner: canHire(state.activeFloor, CLEANER),
+  }),
 });
 
 initTouch({
@@ -136,6 +162,7 @@ initTouch({
   },
 });
 syncMuteButton();
+syncHotelName();
 if (!canSave) warnNoSave();
 setFloorButtons();
 refreshRoomPanel();
@@ -149,6 +176,7 @@ function resetAfter(happened) {
   if (!happened) return;
   resetGuests();
   resetPlayer();
+  resetStaff();
   follow = false;
   setActiveFloor(0);
   camera.position.set(CENTER.x, 42, 13);
@@ -324,6 +352,8 @@ if (DEV) window.__hotel = {
     controls.update();
   },
   save: saveGame,
+  hire: (f, k) => hire(f, k),
+  staffOnFloor,
   load: loadGame,
 };
 
@@ -341,6 +371,7 @@ function frame(now) {
     while (acc >= C.FIXED_DT && steps < C.MAX_STEPS) {
       updateLift(C.FIXED_DT);     // before the guests: they read the cabin state
       simulate(C.FIXED_DT);
+      updateStaff(C.FIXED_DT);
       state.simTime += C.FIXED_DT;
       secAcc += C.FIXED_DT;
       if (secAcc >= 1) { secAcc -= 1; rollIncomeBucket(); }
@@ -377,9 +408,11 @@ function frame(now) {
 
   renderGuests();
   renderLift();
+  renderStaff();
   renderPlayer();
   updateLiftButton();
   updateMarkers(state.simTime, roomHasRequest);
+  updateTutorial(state.simTime);
   setDeskRing(player.atDesk);
   controls.update();
   renderer.render(scene, camera);

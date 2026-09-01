@@ -11,7 +11,15 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { mergeGeometries } from '../vendor/addons/BufferGeometryUtils.js';
 import * as C from './config.js';
-import { rooms, state } from './world.js';
+import { rooms, state, seatCount, seatX, seatZ } from './world.js';
+
+// The dining room gets its own warm ramp; reusing the room palette made a
+// level 4 restaurant the exact green of the lawn outside.
+const REST_COLORS = [
+  0x30363d,
+  0x6b4a3a, 0x7a4f3f, 0x8a5344, 0x99584a,
+  0xa85d50, 0xb76256, 0xc6675c, 0xd56c62, 0xe0806a,
+];
 
 export const LEVEL_COLORS = [
   0x30363d, // 0 = locked
@@ -42,6 +50,8 @@ export const gfx = {
   instRoom: new Int32Array(C.ROOMS_PER_FLOOR),   // instance -> room id
   roomInst: new Int32Array(C.TOTAL_ROOMS),       // room id -> instance (-1)
   selection: null,
+  restFloor: null,
+  tables: null,
   wallRects: [],            // XZ AABBs per floor (x0,x1,z0,z1,...) for collisions
   markers: null,            // room service markers above the rooms
   deskRing: null,           // the circle in front of the reception desk
@@ -50,6 +60,7 @@ export const gfx = {
 // Reused scratch objects: no allocations in the update loops.
 const _obj = new THREE.Object3D();
 const _col = new THREE.Color();
+const _dirtCol = new THREE.Color(0x6b5a3a);
 
 // --- geometry helpers ------------------------------------------------------
 
@@ -99,6 +110,7 @@ export function buildScene(scene) {
   buildRoomInstances(scene);
   buildSelection(scene);
   buildExtras(scene);
+  buildRestaurantFittings(scene);
   setActiveFloor(0);
 }
 
@@ -119,9 +131,11 @@ const BUILD_X1 = C.CORRIDOR_X1 + 4;
 const RIVER_Z = -34;
 const RIVER_W = 13;
 
-/** Is this spot free of the hotel, the access road and the river? */
+/** Is this spot free of the hotel, the restaurant, the road and the river? */
 function freeGround(x, z) {
   if (x > BUILD_X0 && x < BUILD_X1 && Math.abs(z) < C.BUILD_Z + 4) return false;
+  // The restaurant wing, or trees grow between the tables.
+  if (x > C.REST_X0 - 3 && x < C.REST_X1 + 3 && z > C.REST_Z0 - 3 && z < -C.BUILD_Z) return false;
   if (x < C.LOBBY_X0 && Math.abs(z) < 6) return false;              // the road
   if (Math.abs(z - RIVER_Z) < RIVER_W / 2 + 3) return false;        // the river
   return true;
@@ -305,11 +319,14 @@ function buildFloor(scene, f) {
   // The floor itself comes with the cabin, which travels (see elevator.js).
   for (let sx = -1; sx <= 1; sx += 2) {
     for (let sz = -1; sz <= 1; sz += 2) {
-      solid(lift, 0.28, C.WALL_H, 0.28, C.ELEV_X + sx * C.ELEV_HW, wallY, sz * C.ELEV_HW);
+      solid(lift, 0.28, C.WALL_H, 0.28,
+            C.ELEV_X + sx * C.ELEV_HW, wallY, C.ELEV_Z + sz * C.ELEV_HW);
     }
   }
-  lift.push(box(C.ELEV_HW * 2, 0.2, 0.28, C.ELEV_X, y + C.WALL_H, C.ELEV_HW));
-  lift.push(box(C.ELEV_HW * 2, 0.2, 0.28, C.ELEV_X, y + C.WALL_H, -C.ELEV_HW));
+  for (const sz of [1, -1]) {
+    lift.push(box(C.ELEV_HW * 2, 0.2, 0.28,
+                  C.ELEV_X, y + C.WALL_H, C.ELEV_Z + sz * C.ELEV_HW));
+  }
   mergeInto(group, lift, matSteel);
 
   if (f === 0) {
@@ -318,13 +335,23 @@ function buildFloor(scene, f) {
     const segZ = C.BUILD_Z - gap / 2;
     for (const sign of [1, -1]) {
       solid(walls, C.WALL_T, C.WALL_H, segZ, C.LOBBY_X0, wallY, sign * (gap / 2 + segZ / 2));
-      solid(walls, -C.LOBBY_X0, C.WALL_H, C.WALL_T, C.LOBBY_X0 / 2, wallY, sign * C.BUILD_Z);
     }
+    solid(walls, -C.LOBBY_X0, C.WALL_H, C.WALL_T, C.LOBBY_X0 / 2, wallY, C.BUILD_Z);
+
+    // The south wall is split to leave a doorway through to the restaurant.
+    const doorL = C.REST_DOOR_X - C.REST_DOOR_W / 2;
+    const doorR = C.REST_DOOR_X + C.REST_DOOR_W / 2;
+    const leftW = doorL - C.LOBBY_X0;
+    const rightW = 0 - doorR;
+    solid(walls, leftW, C.WALL_H, C.WALL_T, C.LOBBY_X0 + leftW / 2, wallY, -C.BUILD_Z);
+    solid(walls, rightW, C.WALL_H, C.WALL_T, doorR + rightW / 2, wallY, -C.BUILD_Z);
+
+    buildRestaurantWing(slabs, walls, y, wallY, solid);
     // The reception desk + the panel behind it.
     solid(wood, C.DESK_W, 1.05, 1.0, C.DESK_X, y + 0.525, C.DESK_Z);
     solid(wood, C.DESK_W + 1.4, 2.2, 0.25, C.DESK_X, y + 1.1, C.DESK_Z + 1.3);
     // A few benches in the waiting area.
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       solid(wood, 3.2, 0.45, 0.8, C.LOBBY_X0 + 5.5 + i * 4.2, y + 0.22, -C.BUILD_Z + 1.4);
     }
   } else {
@@ -342,7 +369,67 @@ function buildFloor(scene, f) {
   return group;
 }
 
-// --- room instances -------------------------------------------------
+/**
+ * The restaurant wing hanging off the south side of the lobby. It is always
+ * built; whether it is open is a matter of its level, the same way a locked
+ * room is still a room.
+ */
+function buildRestaurantWing(slabs, walls, y, wallY, solid) {
+  const w = C.REST_X1 - C.REST_X0;
+  const zFar = C.REST_Z0;
+  const depth = -C.BUILD_Z - zFar;
+
+  slabs.push(box(w + 1, C.SLAB_T, depth + 0.5,
+                 (C.REST_X0 + C.REST_X1) / 2, y - C.SLAB_T / 2, (zFar - C.BUILD_Z) / 2 - 0.25));
+
+  solid(walls, C.WALL_T, C.WALL_H, depth, C.REST_X0, wallY, (zFar - C.BUILD_Z) / 2);
+  solid(walls, C.WALL_T, C.WALL_H, depth, C.REST_X1, wallY, (zFar - C.BUILD_Z) / 2);
+  solid(walls, w + C.WALL_T, C.WALL_H, C.WALL_T, (C.REST_X0 + C.REST_X1) / 2, wallY, zFar);
+}
+
+function buildRestaurantFittings(scene) {
+  const w = C.REST_X1 - C.REST_X0;
+  const depth = -C.BUILD_Z - C.REST_Z0;
+  const geo = new THREE.PlaneGeometry(w - C.WALL_T, depth - C.WALL_T);
+  geo.rotateX(-Math.PI / 2);
+  gfx.restFloor = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x30363d }));
+  gfx.restFloor.position.set((C.REST_X0 + C.REST_X1) / 2, 0.015, (C.REST_Z0 - C.BUILD_Z) / 2);
+  scene.add(gfx.restFloor);
+
+  // One table per seat; only as many as the current level pays for are drawn.
+  const tableGeo = new THREE.CylinderGeometry(0.62, 0.5, 0.78, 10);
+  tableGeo.translate(0, 0.39, 0);
+  gfx.tables = new THREE.InstancedMesh(tableGeo, matWood, C.MAX_SEATS);
+  gfx.tables.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  gfx.tables.frustumCulled = false;
+  gfx.tables.count = 0;
+  scene.add(gfx.tables);
+}
+
+/** Called whenever the restaurant is built or upgraded. */
+export function refreshRestaurant() {
+  const lvl = state.restaurantLevel;
+  gfx.restFloor.material.color.setHex(REST_COLORS[Math.min(lvl, REST_COLORS.length - 1)]);
+
+  const n = seatCount();
+  for (let i = 0; i < n; i++) {
+    // The table sits just beyond the spot the diner walks to.
+    _obj.position.set(seatX(i), 0, seatZ(i) - 0.85);
+    _obj.rotation.set(0, 0, 0);
+    _obj.scale.set(1, 1, 1);
+    _obj.updateMatrix();
+    gfx.tables.setMatrixAt(i, _obj.matrix);
+  }
+  gfx.tables.count = n;
+  gfx.tables.instanceMatrix.needsUpdate = true;
+
+  // Only the ground floor has a restaurant.
+  const onGround = state.activeFloor === 0;
+  gfx.restFloor.visible = onGround;
+  gfx.tables.visible = onGround;
+}
+
+// --- room instances -------------------------------------------------------------------------------------------------------
 
 function buildRoomInstances(scene) {
   const n = C.ROOMS_PER_FLOOR;
@@ -430,6 +517,7 @@ export function refreshRooms() {
 
   refreshFurniture();
   refreshDoorColors();
+  refreshRestaurant();
   updateSelection();
 }
 
@@ -461,10 +549,18 @@ export function refreshDoorColors() {
     const r = gfx.instRoom[k];
     if (rooms.level[r] === 0) _col.setHex(0x3a3f47);
     else if (rooms.occupant[r] >= 0) _col.setHex(0xd4453f);
+    else if (rooms.dirty[r] > 0) _col.setHex(0x8a7040);   // needs cleaning
     else _col.setHex(0x46c86a);
     gfx.doors.setColorAt(k, _col);
+
+    // A dirty room's floor is dulled towards brown, so you can see the mess
+    // from across the hotel without reading the door.
+    _col.setHex(LEVEL_COLORS[rooms.level[r]]);
+    if (rooms.dirty[r] > 0) _col.lerp(_dirtCol, 0.55);
+    gfx.tiles.setColorAt(k, _col);
   }
   if (gfx.doors.instanceColor) gfx.doors.instanceColor.needsUpdate = true;
+  if (gfx.tiles.instanceColor) gfx.tiles.instanceColor.needsUpdate = true;
 }
 
 export function updateSelection() {
@@ -490,7 +586,8 @@ export function pickRoom(raycaster) {
 function buildExtras(scene) {
   // A gold diamond floating above the room that rang for room service.
   const geo = new THREE.OctahedronGeometry(0.42);
-  const mat = new THREE.MeshLambertMaterial({ color: 0xffd24b, emissive: 0x6b4c00 });
+  // White base so the per-instance colour comes through unchanged.
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x3a2a00 });
   gfx.markers = new THREE.InstancedMesh(geo, mat, C.ROOMS_PER_FLOOR);
   gfx.markers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   gfx.markers.frustumCulled = false;
@@ -517,16 +614,23 @@ export function updateMarkers(t, hasRequest) {
   for (let s = 0; s < 2; s++) {
     for (let i = 0; i < C.ROOMS_PER_SIDE; i++) {
       const r = f * C.ROOMS_PER_FLOOR + s * C.ROOMS_PER_SIDE + i;
-      if (!hasRequest(r)) continue;
+      const wants = hasRequest(r);
+      const messy = rooms.dirty[r] > 0;
+      if (!wants && !messy) continue;
       _obj.position.set(rooms.cx[r], rooms.cy[r] + 2.5 + Math.sin(t * 3 + r) * 0.18, rooms.cz[r]);
       _obj.rotation.set(0, t * 1.6, 0);
-      _obj.scale.set(1, 1, 1);
+      // A room service call is worth more than a clean-up, so it is bigger.
+      _obj.scale.setScalar(wants ? 1 : 0.68);
       _obj.updateMatrix();
-      gfx.markers.setMatrixAt(k++, _obj.matrix);
+      gfx.markers.setMatrixAt(k, _obj.matrix);
+      _col.setHex(wants ? 0xffd24b : 0x9a8050);
+      gfx.markers.setColorAt(k, _col);
+      k++;
     }
   }
   gfx.markers.count = k;
   gfx.markers.instanceMatrix.needsUpdate = true;
+  if (gfx.markers.instanceColor) gfx.markers.instanceColor.needsUpdate = true;
 }
 
 export function setDeskRing(active) {

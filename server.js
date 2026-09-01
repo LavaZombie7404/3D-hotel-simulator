@@ -1,4 +1,4 @@
-// Zero-dependency static server for the 3D hotel simulator.
+// Zero-dependency static server for Hotel Rush.
 // Usage: node server.js [port]   ->  http://localhost:8080
 import { createServer } from 'node:http';
 import { createReadStream, promises as fs } from 'node:fs';
@@ -44,5 +44,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`3D Hotel Simulator  ->  http://localhost:${PORT}`);
+  console.log(`Hotel Rush  ->  http://localhost:${PORT}`);
 });

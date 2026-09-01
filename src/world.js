@@ -12,6 +12,7 @@ export const rooms = {
   index:    new Uint8Array(N),   // position along the corridor, 0..ROOMS_PER_SIDE-1
   level:    new Uint8Array(N),   // 0 = locked, 1..MAX_LEVEL = unlocked
   occupant: new Int16Array(N),   // guest id, -1 = free
+  dirty:    new Float32Array(N), // seconds left before housekeeping clears it
   cx:       new Float32Array(N), // room centre
   cy:       new Float32Array(N), // floor level
   cz:       new Float32Array(N),
@@ -27,11 +28,16 @@ export const state = {
   checkouts: 0,
   tips: 0,              // tips collected by the waiter
   servedRequests: 0,
+  roomsCleaned: 0,
+  staffHired: 0,
+  restaurantLevel: 0,
+  meansServed: 0,
   missedRequests: 0,
   boosters: 0,          // +25% income each; one rebirth grants one
   rebirths: 0,          // rebirths since the last prestige
   maxRebirths: 0,       // highest ever reached — the new floors depend on it
   prestige: 0,
+  hotelName: 'Grand Hotel',
   lifetimeEarned: 0,    // cumulative earnings across every rebirth
   floorUnlocked: [true, false, false, false, false, false],
   activeFloor: 0,
@@ -82,6 +88,7 @@ export function initWorld() {
         rooms.index[r] = i;
         rooms.level[r] = 0;
         rooms.occupant[r] = -1;
+        rooms.dirty[r] = 0;
         rooms.cx[r] = i * C.ROOM_W + C.ROOM_W / 2;
         rooms.cy[r] = f * C.FLOOR_H;
         rooms.cz[r] = sign * (C.HALF_C + C.ROOM_D / 2);
@@ -151,6 +158,72 @@ export function payout(level) {
   return withBonus(C.PAY_PER_LEVEL * level);
 }
 
+/** How long housekeeping takes right now. */
+export function cleanTime() {
+  return C.CLEAN_TIME / flowMult();
+}
+
+/** What cleaning a room yourself pays. */
+export function cleanPay(level) {
+  return withBonus(C.CLEAN_PAY_PER_LEVEL * level);
+}
+
+// --- restaurant -------------------------------------------------------------
+
+const seats = new Uint8Array(C.MAX_SEATS);
+
+/** How many tables are actually in use at the current level. */
+export function seatCount() {
+  return Math.min(C.MAX_SEATS, state.restaurantLevel * C.SEATS_PER_LEVEL);
+}
+
+export function seatX(i) { return C.REST_X0 + 2 + (i % C.SEAT_COLS) * 2.3; }
+export function seatZ(i) { return C.REST_Z0 + 2.4 + Math.floor(i / C.SEAT_COLS) * 3.4; }
+
+export function takeSeat() {
+  const n = seatCount();
+  for (let i = 0; i < n; i++) if (seats[i] === 0) { seats[i] = 1; return i; }
+  return -1;
+}
+
+export function freeSeat(i) { if (i >= 0 && i < C.MAX_SEATS) seats[i] = 0; }
+export function clearSeats() { seats.fill(0); }
+
+export function seatsTaken() {
+  let n = 0;
+  for (let i = 0; i < seatCount(); i++) if (seats[i]) n++;
+  return n;
+}
+
+/** What a meal pays, bonus included. */
+export function dinePay() {
+  return withBonus(C.DINE_PAY_PER_LEVEL * state.restaurantLevel);
+}
+
+export function restaurantCost() {
+  return Math.round(C.REST_COST_BASE * Math.pow(C.REST_COST_GROWTH, state.restaurantLevel));
+}
+
+export function tryUpgradeRestaurant() {
+  if (state.restaurantLevel >= C.REST_MAX_LEVEL) return false;
+  if (!spend(restaurantCost())) return false;
+  state.restaurantLevel++;
+  state.roomsDirty = true;      // more tables to draw
+  return true;
+}
+
+/** What the next hire costs; it rises with every member of staff. */
+export function staffCost() {
+  return Math.round(C.STAFF_COST_BASE * Math.pow(C.STAFF_COST_GROWTH, state.staffHired));
+}
+
+/** Rooms sitting dirty right now, for the HUD. */
+export function dirtyCount() {
+  let n = 0;
+  for (let r = 0; r < N; r++) if (rooms.dirty[r] > 0) n++;
+  return n;
+}
+
 /** The room service tip, with the bonus applied. */
 export function tipFor(level) {
   return withBonus(C.TIP_PER_LEVEL * level);
@@ -205,7 +278,7 @@ export function tryUnlockFloor(f) {
 export function findBestFreeRoom() {
   let best = -1, bestLevel = 0;
   for (let r = 0; r < N; r++) {
-    if (rooms.level[r] > bestLevel && rooms.occupant[r] < 0) {
+    if (rooms.level[r] > bestLevel && rooms.occupant[r] < 0 && rooms.dirty[r] <= 0) {
       best = r;
       bestLevel = rooms.level[r];
     }
@@ -214,7 +287,9 @@ export function findBestFreeRoom() {
 }
 
 export function anyFreeRoom() {
-  for (let r = 0; r < N; r++) if (rooms.level[r] > 0 && rooms.occupant[r] < 0) return true;
+  for (let r = 0; r < N; r++) {
+    if (rooms.level[r] > 0 && rooms.occupant[r] < 0 && rooms.dirty[r] <= 0) return true;
+  }
   return false;
 }
 
@@ -267,6 +342,9 @@ function resetRun() {
 
   rooms.level.fill(0);
   rooms.occupant.fill(-1);
+  rooms.dirty.fill(0);
+  state.restaurantLevel = 0;
+  clearSeats();
   rooms.level[roomId(0, 0, 0)] = 1;
   rooms.level[roomId(0, 1, 0)] = 1;
 

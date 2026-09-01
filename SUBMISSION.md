@@ -18,10 +18,10 @@ tree of ~800 KB.
 
 ## Title
 
-**3D Hotel Simulator**
+**Hotel Rush**
 
-Alternative, if they want something less generic: **Night Shift Hotel**,
-**Bellhop Tycoon**, **One Star to Five**.
+Short, works in any language, and describes the loop rather than the setting.
+The hotel itself is named by the player in-game, so the title is about the job.
 
 ## Tagline
 
@@ -46,7 +46,12 @@ So you run. Stand in the circle at the front desk and check-ins go two and a
 half times faster — leave it and the queue outgrows the desk until people give
 up in the doorway. Meanwhile a gold diamond pops above a room upstairs: a guest
 wants room service, and there are fourteen seconds on it before they stop
-caring. The lift only holds so many people. You are one of them.
+caring. Another room is dirty and cannot be let until somebody cleans it. The
+lift only holds so many people. You are one of them.
+
+Eventually you hire out. Porters take the room service calls, cleaners turn the
+rooms around, and a restaurant off the lobby feeds guests on their way out. Each
+hire works one floor, and none of them are as fast as you.
 
 The money goes back into the building: unlock rooms, upgrade them from a bare
 bed to a suite with a sofa and a TV, open new floors. Then you rebirth — burn
@@ -57,7 +62,7 @@ At twenty, prestige multiplies everything you have earned by ten.
 ## Genre and tags
 
 Simulation, management, idle, tycoon, 3D, top-down, singleplayer, hotel,
-incremental, upgrade
+incremental, upgrade, restaurant
 
 ---
 
@@ -90,6 +95,7 @@ incremental, upgrade
 ## Technical
 
 - **Engine:** none. Hand-written JavaScript on top of Three.js r180.
+- **Audio:** synthesised with Web Audio at runtime; there are no sound files.
 - **Size:** ~788 KB of vendored Three.js plus ~60 KB of game code. No build step.
 - **External requests:** none, except the Poki SDK itself. Everything else is
   bundled.
@@ -117,6 +123,8 @@ incremental, upgrade
 | Under 8 MB, loads well under 10 s | ✅ ~850 KB total |
 | Esc / space pause | ✅ Esc |
 | Skippable intros | ✅ there are none |
+| Visual tutorial over text | ✅ world-space arrow, two steps |
+| Sound | ✅ synthesised, with a mute toggle |
 
 `node tools/poki-ready.mjs` checks all of the above automatically, and passes
 against the live URL.
@@ -126,8 +134,6 @@ against the live URL.
 - **Animated thumbnail.** Poki wants a static and an animated thumbnail at the
   global release stage, not at application. Static one is at
   `tools/shots/thumbnail-1280x720.png`; the animated one is not made yet.
-- **A name that stands out.** "3D Hotel Simulator" describes the game but does
-  not sell it. See the alternatives above.
 
 ---
 

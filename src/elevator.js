@@ -74,20 +74,15 @@ export function freeSlot(i) {
 // Seats sit on a 6-column grid, which still fits inside the cabin at maximum
 // capacity (30 seats = 5 rows).
 export function slotX(i) { return C.ELEV_X + ((i % 6) - 2.5) * 0.5; }
-export function slotZ(i) { return (Math.floor(i / 6) - 2) * 0.55; }
+export function slotZ(i) { return C.ELEV_Z + (Math.floor(i / 6) - 2) * 0.55; }
 
-/**
- * A waiting spot next to the lift.
- * side -1 = towards the lobby / landing, +1 = towards the corridor.
- */
-export function waitX(side, k) {
-  const base = C.ELEV_X + side * (C.ELEV_HW + C.LIFT_WAIT_GAP);
-  return base + side * Math.floor(k / 3) * 0.85;
-}
-export function waitZ(k) { return -1.1 + (k % 3) * 1.1; }
+// Everyone waits on the same side of the shaft, the one facing the corridor,
+// because that is where both the lobby and the corridor lead. Spots spread
+// sideways first, then back, and are not capped by the cabin's capacity.
+export const LANDING_Z = C.ELEV_Z + C.ELEV_HW + C.LIFT_WAIT_GAP;
 
-// Note: waiting spots wrap every 3 people in depth and then spread sideways;
-// they are not limited by the cabin capacity.
+export function waitX(side, k) { return C.ELEV_X + ((k % 5) - 2) * 0.95; }
+export function waitZ(k) { return LANDING_Z + Math.floor(k / 5) * 0.9; }
 
 // --- logic -----------------------------------------------------------------
 
@@ -175,9 +170,11 @@ export function buildLift(scene) {
   const floorGeo = new THREE.BoxGeometry(C.CABIN_HW * 2, 0.1, C.CABIN_HW * 2);
   floorGeo.translate(0, 0.05, 0);
   parts.push(floorGeo);
-  for (const sz of [1, -1]) {
-    const w = new THREE.BoxGeometry(C.CABIN_HW * 2, H, 0.12);
-    w.translate(0, H / 2, sz * C.CABIN_HW);
+  // Solid walls on the X faces; the doors are on the Z faces, towards the
+  // landing and the back of the shaft.
+  for (const sx of [1, -1]) {
+    const w = new THREE.BoxGeometry(0.12, H, C.CABIN_HW * 2);
+    w.translate(sx * C.CABIN_HW, H / 2, 0);
     parts.push(w);
   }
   const merged = mergeGeometries(parts, false);
@@ -186,7 +183,7 @@ export function buildLift(scene) {
 
   // Four door panels (two on each face, towards the lobby and the corridor).
   // They shrink towards the edges as the door opens.
-  const panel = new THREE.BoxGeometry(0.14, H - 0.2, 1);
+  const panel = new THREE.BoxGeometry(1, H - 0.2, 0.14);
   doors = new THREE.InstancedMesh(panel, matDoor, 4);
   doors.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   doors.frustumCulled = false;
@@ -200,16 +197,16 @@ export function renderLift() {
   cabin.visible = visible;
   if (!visible) return;
 
-  cabin.position.set(C.ELEV_X, lift.y, 0);
+  cabin.position.set(C.ELEV_X, lift.y, C.ELEV_Z);
 
   const half = C.CABIN_HW * 0.95;
   const len = Math.max(0.001, half * (1 - lift.doorT));   // length of one panel
   let k = 0;
-  for (const sx of [1, -1]) {
-    for (const sz of [1, -1]) {
-      _obj.position.set(sx * C.CABIN_HW, 1.2, sz * (half - len / 2));
+  for (const sz of [1, -1]) {
+    for (const sx of [1, -1]) {
+      _obj.position.set(sx * (half - len / 2), 1.2, sz * C.CABIN_HW);
       _obj.rotation.set(0, 0, 0);
-      _obj.scale.set(1, 1, len);
+      _obj.scale.set(len, 1, 1);
       _obj.updateMatrix();
       doors.setMatrixAt(k++, _obj.matrix);
     }

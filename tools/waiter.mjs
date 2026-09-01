@@ -85,7 +85,7 @@ check('does not pass through the outer wall', wall.z > 7 && wall.z < 8.8, `z = $
 // --- 3. the lift ------------------------------------------------------------
 await page.evaluate(() => {
   const p = window.__hotel.player;
-  p.x = -2.6; p.z = 0; p.floor = 0;      // inside the lift cabin
+  p.x = -2.6; p.z = -5.5; p.floor = 0;      // inside the lift cabin
 });
 await page.waitForTimeout(150);
 await page.keyboard.press('e');

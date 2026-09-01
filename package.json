@@ -1,9 +1,9 @@
 {
-  "name": "hotel-3d-simulator",
+  "name": "hotel-rush",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Top-down 3D hotel simulator with instanced rendering",
+  "description": "Hotel Rush - a top-down 3D hotel game where you play the waiter",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js 8080"

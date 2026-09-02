@@ -132,6 +132,21 @@
   #money { transition: transform .12s ease-out; transform-origin: left center; }
   #money.bump { transform: scale(1.13); }
 
+  /* --- fatal error, shown when the game cannot start at all --- */
+  #fatal {
+    position: absolute; inset: 0; display: none; z-index: 50;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px; background: rgba(8,10,13,.94); text-align: center;
+  }
+  #fatal.on { display: flex; }
+  #fatal h3 { margin: 0; color: var(--red); font-size: 18px; }
+  #fatal p { margin: 0; color: var(--dim); font-size: 12px; }
+  #fatal pre {
+    margin: 0; max-width: 90%; max-height: 45vh; overflow: auto; text-align: left;
+    background: rgba(0,0,0,.5); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; font-size: 11px; white-space: pre-wrap; word-break: break-word;
+  }
+
   /* --- pause --- */
   #pause {
     position: absolute; inset: 0; display: none;
@@ -226,6 +241,41 @@
 </head>
 <body>
 <div id="app"></div>
+
+<div id="fatal"><h3>The game could not start</h3><pre id="fatal-msg"></pre>
+<p>Please send this text to the developer.</p></div>
+
+<script>
+// Deliberately a classic script and deliberately first: if a module fails to
+// load or throws on evaluation, nothing inside the module graph can report it,
+// and the player is left staring at a HUD drawn over an empty screen.
+(function () {
+  var box = null;
+  function show(what) {
+    if (!box) {
+      box = document.getElementById('fatal');
+      document.getElementById('fatal-msg').textContent = String(what).slice(0, 700);
+      box.className = 'on';
+    }
+  }
+  window.addEventListener('error', function (e) {
+    if (e.target && e.target.tagName === 'SCRIPT') {
+      show('Failed to load script: ' + (e.target.src || '(inline)'));
+    } else {
+      show([e.message || 'Script error', e.filename || '', e.lineno || ''].join(' | '));
+    }
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    show('Unhandled rejection: ' + ((e.reason && e.reason.message) || e.reason));
+  });
+  // If the loop never starts, say so rather than showing nothing at all.
+  setTimeout(function () {
+    if (!document.querySelector('#app canvas')) {
+      show('The game module never ran. No canvas was created after 8 seconds.');
+    }
+  }, 8000);
+})();
+</script>
 
 <div id="money-panel" class="panel">
   <input id="hotel-name" maxlength="22" spellcheck="false" aria-label="Hotel name">

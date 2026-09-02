@@ -86,15 +86,28 @@ await page.screenshot({ path: `${OUT}/70-staff.png` });
 check('no meals before it is built', afterStaff.meals === 0 && afterStaff.restLevel === 0,
       `level ${afterStaff.restLevel}, ${afterStaff.meals} meals`);
 
-for (let i = 0; i < 4; i++) {
-  await page.waitForTimeout(400);          // the button enables on the next HUD tick
+// Click until it reaches level 4 rather than assuming every click of exactly
+// four lands. Whether a click is swallowed by a HUD repaint is a timing detail
+// of the test harness, not something the game promises.
+const TARGET_LEVEL = 4;
+for (let i = 0; i < 20; i++) {
+  if ((await snap()).restLevel >= TARGET_LEVEL) break;
+  await page.waitForTimeout(300);
   await page.click('#restaurant');
 }
 const built = await snap();
-check('the restaurant reaches level 4', built.restLevel === 4, `level ${built.restLevel}`);
+check(`the restaurant reaches level ${TARGET_LEVEL}`, built.restLevel === TARGET_LEVEL,
+      `level ${built.restLevel}`);
 
+// The instanced tables are rebuilt on the frame after the purchase, not inside
+// the click, so give the renderer a moment before reading the count.
 const tables = await page.evaluate(async () => {
   const m = await import('/src/build.js');
+  const want = 8;
+  for (let i = 0; i < 40; i++) {
+    if (m.gfx.tables.count === want) break;
+    await new Promise((r) => requestAnimationFrame(r));
+  }
   return m.gfx.tables.count;
 });
 check('tables appear with the level', tables === 8, `${tables} tables drawn`);

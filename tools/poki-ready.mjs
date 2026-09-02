@@ -233,7 +233,31 @@ function watch(page, errors) {
   await ctx.close();
 }
 
-// --- 6. a shipped build carries no debug tooling ----------------------------
+// --- 6. a blank screen must explain itself ----------------------------------
+// A portal is a black box: when the game fails there, nobody can hand us a
+// console. The page has to say what went wrong on its own.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const page = await ctx.newPage();
+  // Break the entry module the way a bad deploy or a wrong MIME type would.
+  await page.route('**/src/main.js', (route) => route.fulfill({ status: 404, body: '' }));
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(9000);
+
+  const shown = await page.evaluate(() => {
+    const el = document.getElementById('fatal');
+    return {
+      visible: !!el && el.className === 'on',
+      text: (document.getElementById('fatal-msg') || {}).textContent || '',
+    };
+  });
+  check('a failed start is reported on screen', shown.visible && shown.text.length > 0,
+        shown.text.slice(0, 90) || 'nothing was shown');
+  await page.screenshot({ path: `${OUT}/54-fatal.png` });
+  await ctx.close();
+}
+
+// --- 7. a shipped build carries no debug tooling ----------------------------
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();

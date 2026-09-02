@@ -194,15 +194,27 @@ in the hotel (and there can be up to 300):
   steps smaller than a wall is thick, so a long frame cannot throw him through
   one.
 
-## Publishing on Poki
+## Publishing on a portal
 
-The build already meets Poki's technical bar:
+`index.html` ships with no portal SDK at all, so local development and the
+tests never talk to one. `tools/build.mjs` injects the right script tag:
 
-- **Poki SDK** wired up (`src/poki.js`): `init`, `gameLoadingFinished`,
+```bash
+node tools/build.mjs crazygames    # -> dist/crazygames
+node tools/build.mjs poki          # -> dist/poki
+node tools/build.mjs plain         # no SDK; what GitHub Pages serves
+```
+
+`src/platform.js` is one adapter over both SDKs and over neither, so the game
+code never knows which portal it is on. Each build is 0.91 MB across 20 files.
+
+The build already meets both platforms' technical bar:
+
+- **Portal SDK** wired up (`src/platform.js`): `init`, loading finished,
   `gameplayStart` on the player's first input, `gameplayStop` on any
   interruption, and a `commercialBreak` when gameplay resumes from a pause. No
-  SDK event can fire during an ad. When the SDK is absent every call is a no-op,
-  so the game runs anywhere.
+  SDK event can fire during an ad. When no SDK is present every call is a
+  no-op, so the game runs anywhere.
 - **Desktop, tablet and phone.** A virtual joystick drives the waiter on touch
   devices, the floor tabs double as the lift's floor buttons, and a contextual
   button calls or rides the lift.
@@ -215,10 +227,11 @@ The build already meets Poki's technical bar:
 - **Nothing is fetched from outside** except the Poki SDK itself.
 - **788 KB of vendored three.js** (minified build), well inside the 8 MB budget.
 
-What is left is not code: Poki is invite-only and hand-curated. You apply
-through their game submission form, they review, and only then do you get
-access to upload for a Web Fit Test. Poki also asks that you be able to explain
-your tools and process, including AI use.
+What is left is not code. Poki is invite-only and hand-curated, and only
+replies if a game is a fit. CrazyGames takes open submissions and usually gives
+QA feedback in a day or two, launching in two stages: a limited basic launch
+first, then a monetised full launch once the game has 500 plays over a week.
+Both ask that you can explain your tools and process, including AI use.
 
 ## Layout
 

@@ -1,7 +1,19 @@
-# Poki submission packet
+# Portal submission packet
 
-Everything the Poki for Developers form asks for, ready to paste.
-Form: https://developers.poki.com → "Submit your game"
+Everything the submission forms ask for, ready to paste.
+
+- **Poki** — https://developers.poki.com → "Submit your game" (invite-only,
+  hand-curated; they only reply if a game is a fit)
+- **CrazyGames** — https://developer.crazygames.com (open submissions, QA
+  feedback usually in 1-2 days)
+
+Build a portal-specific bundle first, so each one gets its own SDK and nobody
+else's:
+
+```bash
+node tools/build.mjs crazygames    # -> dist/crazygames
+node tools/build.mjs poki          # -> dist/poki
+```
 
 ---
 
@@ -104,6 +116,29 @@ incremental, upgrade, restaurant
 - **Performance:** the whole scene is 11–38 draw calls with 48 rooms, hired
   staff, a full restaurant and up to 300 guests on screen. Fixed 1/60 s simulation step, decoupled from render
   rate. No per-frame allocations, so the GC does not fire during play.
+
+## CrazyGames requirements checklist
+
+They run a two-stage launch: a **Basic launch** needs no CrazyGames-specific
+integration at all, then a **Full launch** turns on monetisation once the game
+has 500 plays over at least 7 days. This build is already ready for the full
+one.
+
+| Requirement | Status |
+|---|---|
+| Initial download ≤ 50 MB (≤ 20 MB for the mobile homepage) | ✅ **0.91 MB** |
+| Total ≤ 250 MB, ≤ 1500 files | ✅ 0.91 MB, 20 files |
+| Playable within 20 seconds | ✅ one page load, no streaming assets |
+| Relative paths only | ✅ nothing absolute except the SDK itself |
+| Mouse, keyboard and touch | ✅ all three |
+| Landscape, scales to the frame | ✅ 16:9, verified at 640×360 |
+| Runs on a 4 GB Chromebook | ✅ 11-38 draw calls, Lambert materials, no shadows |
+| CSS user-select disabled (stops mobile magnifiers) | ✅ |
+| Audio context resumed after a gesture | ✅ audio starts on first input |
+| Gameplay start event | ✅ on first input, not on load |
+| Progress saving | ✅ localStorage, incognito-safe |
+| PEGI 12 | ✅ no violence, no gambling, no chat |
+| No external ads or third-party analytics | ✅ none |
 
 ## Poki requirements checklist
 

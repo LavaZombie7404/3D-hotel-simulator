@@ -34,8 +34,8 @@ import {
   tickRebirthPrompt, setPaused, warnNoSave, syncMuteButton, syncHotelName,
 } from './ui.js';
 import {
-  initPoki, loadingFinished, gameplayStart, gameplayStop, commercialBreak, adInProgress,
-} from './poki.js';
+  initPlatform, loadingFinished, gameplayStart, gameplayStop, commercialBreak, adInProgress,
+} from './platform.js';
 import { loadGame, saveGame, canSave } from './save.js';
 import { initTouch, isTouch, releaseStick, updateLiftButton } from './touch.js';
 import {
@@ -434,7 +434,7 @@ function frame(now) {
 }
 
 // Start the loop only once the SDK has had its chance to initialise.
-initPoki().then(() => {
+initPlatform().then(() => {
   loadingFinished();
   last = performance.now();
   requestAnimationFrame(frame);

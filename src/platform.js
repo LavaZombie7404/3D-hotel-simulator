@@ -6,68 +6,110 @@
 // injects the right script tag - so this file never loads anything itself. If
 // no SDK is there, every call is a no-op and the game runs exactly the same.
 //
-// The rules both portals share, and which shape this file:
+// Two rules this file exists to enforce:
+//
+//   1. A portal SDK must never be able to stop the game. Every call is wrapped,
+//      and init() races a timeout, because a promise that never settles would
+//      otherwise leave the player staring at an empty screen.
+//   2. The SDK is looked up lazily on each call, never captured once at module
+//      load. A portal is free to attach its object after our module has been
+//      evaluated, and capturing early would silently disable it forever.
+//
+// The behaviour both portals share, and which shapes the rest:
 //   * gameplayStart fires on the player's first input, not on load.
 //   * gameplayStop fires on any interruption, and the two must never fire
 //     twice in a row - hence the `playing` latch.
 //   * Nothing may fire while an ad is on screen, so `adPlaying` gates it all.
 // ---------------------------------------------------------------------------
 
-const poki = typeof window !== 'undefined' ? window.PokiSDK : undefined;
-const crazy = typeof window !== 'undefined' && window.CrazyGames
-  ? window.CrazyGames.SDK
-  : undefined;
+const INIT_TIMEOUT = 4000;
 
-export const host = poki ? 'poki' : (crazy ? 'crazygames' : 'none');
+function poki() {
+  return (typeof window !== 'undefined' && window.PokiSDK) || null;
+}
 
-let ready = !crazy;       // CrazyGames refuses every call until init() resolves
+function crazy() {
+  const cg = typeof window !== 'undefined' ? window.CrazyGames : null;
+  return (cg && cg.SDK) || null;
+}
+
+/** 'poki' | 'crazygames' | 'none', decided fresh each time it is asked. */
+export function host() {
+  if (poki()) return 'poki';
+  if (crazy()) return 'crazygames';
+  return 'none';
+}
+
+let ready = false;        // has a portal SDK confirmed it is usable?
 let playing = false;      // are we inside a gameplayStart block?
 let adPlaying = false;    // an ad is up: swallow input and events
 
 export function adInProgress() { return adPlaying; }
 
-/** Resolves once the SDK is ready, or immediately when there is none. */
+/** Never rejects, and never hangs: the game start must not depend on a portal. */
 export function initPlatform() {
-  if (poki) {
-    return poki.init().then(() => true).catch(() => false);
-  }
-  if (crazy) {
-    // The v3 SDK really does need init(), despite what the v2 docs say - every
-    // other call throws "CrazySDK is not initialized yet" until it resolves.
+  const p = poki();
+  const cg = crazy();
+  if (!p && !cg) return Promise.resolve('none');
+
+  const attempt = new Promise((resolve) => {
     try {
-      return Promise.resolve(crazy.init())
-        .then(() => { ready = true; return true; })
-        .catch(() => false);
+      if (p) {
+        Promise.resolve(p.init())
+          .then(() => { ready = true; resolve('poki'); })
+          .catch(() => resolve('none'));
+        return;
+      }
+      // The CrazyGames v3 SDK does need init(), despite what the v2 docs say:
+      // every other call throws "CrazySDK is not initialized yet" until then.
+      Promise.resolve(cg.init())
+        .then(() => { ready = true; resolve('crazygames'); })
+        .catch(() => resolve('none'));
     } catch {
-      return Promise.resolve(false);
+      resolve('none');
     }
-  }
-  return Promise.resolve(false);
+  });
+
+  // If a portal never answers, carry on without it rather than never starting.
+  const bail = new Promise((resolve) => setTimeout(() => resolve('timeout'), INIT_TIMEOUT));
+  return Promise.race([attempt, bail]);
+}
+
+/** Wraps every SDK call: a portal hiccup must never surface as a game crash. */
+function safe(fn) {
+  if (!ready) return;
+  try { fn(); } catch { /* ignore */ }
 }
 
 export function loadingFinished() {
-  try {
-    if (poki) poki.gameLoadingFinished();
-    else if (crazy && ready) crazy.game.loadingStop();
-  } catch { /* a portal hiccup must never stop the game */ }
+  safe(() => {
+    const p = poki();
+    if (p) { p.gameLoadingFinished(); return; }
+    const cg = crazy();
+    if (cg && cg.game && cg.game.loadingStop) cg.game.loadingStop();
+  });
 }
 
 export function gameplayStart() {
   if (playing || adPlaying) return;
   playing = true;
-  try {
-    if (poki) poki.gameplayStart();
-    else if (crazy && ready) crazy.game.gameplayStart();
-  } catch { /* ignore */ }
+  safe(() => {
+    const p = poki();
+    if (p) { p.gameplayStart(); return; }
+    const cg = crazy();
+    if (cg && cg.game) cg.game.gameplayStart();
+  });
 }
 
 export function gameplayStop() {
   if (!playing) return;
   playing = false;
-  try {
-    if (poki) poki.gameplayStop();
-    else if (crazy && ready) crazy.game.gameplayStop();
-  } catch { /* ignore */ }
+  safe(() => {
+    const p = poki();
+    if (p) { p.gameplayStop(); return; }
+    const cg = crazy();
+    if (cg && cg.game) cg.game.gameplayStop();
+  });
 }
 
 /**
@@ -78,7 +120,9 @@ export function gameplayStop() {
  * @param {() => void} onEnd    resume
  */
 export function commercialBreak(onStart, onEnd) {
-  if (host === 'none' || !ready) { onStart(); onEnd(); return Promise.resolve(); }
+  const p = poki();
+  const cg = crazy();
+  if (!ready || (!p && !cg)) { onStart(); onEnd(); return Promise.resolve(); }
 
   gameplayStop();
   adPlaying = true;
@@ -86,13 +130,18 @@ export function commercialBreak(onStart, onEnd) {
 
   const done = () => { adPlaying = false; onEnd(); };
 
-  if (poki) {
-    return poki.commercialBreak(() => {}).then(done).catch(done);
+  if (p) {
+    try {
+      return p.commercialBreak(() => {}).then(done, done);
+    } catch {
+      done();
+      return Promise.resolve();
+    }
   }
 
-  // CrazyGames hands back control through callbacks rather than a promise.
+  // CrazyGames hands control back through callbacks rather than a promise.
   // During a basic launch its ads are disabled and it calls adError straight
-  // away, which is exactly the same path as a failed ad.
+  // away, which is the same path as a failed ad.
   return new Promise((resolve) => {
     let settled = false;
     const finish = () => {
@@ -102,7 +151,7 @@ export function commercialBreak(onStart, onEnd) {
       resolve();
     };
     try {
-      crazy.ad.requestAd('midgame', {
+      cg.ad.requestAd('midgame', {
         adStarted: () => {},
         adFinished: finish,
         adError: finish,

@@ -193,7 +193,47 @@ function watch(page, errors) {
   await ctx.close();
 }
 
-// --- 5. a shipped build carries no debug tooling ----------------------------
+// --- 5. a portal SDK that never answers must not stop the game --------------
+// This is the failure that actually bit us: the loop used to start only once
+// the SDK's init() resolved, so an SDK that hung left the player on a blank
+// screen with the HUD drawn over it.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  watch(page, errors);
+  // Install a portal SDK whose init() never settles, before any game code runs.
+  await page.addInitScript(() => {
+    window.CrazyGames = {
+      SDK: {
+        init: () => new Promise(() => {}),      // never resolves, never rejects
+        game: {
+          gameplayStart() {}, gameplayStop() {},
+          loadingStart() {}, loadingStop() {},
+        },
+        ad: { requestAd() {} },
+        getEnvironment: () => 'local',
+      },
+    };
+  });
+  await page.goto(URL, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(4000);
+
+  const alive = await page.evaluate(() => {
+    const h = window.__hotel;
+    return { canvas: !!document.querySelector('canvas'), t: h ? h.state.simTime : -1 };
+  });
+  await page.waitForTimeout(2500);
+  const later = await page.evaluate(() => (window.__hotel ? window.__hotel.state.simTime : -1));
+
+  check('the game starts even if the portal SDK hangs', alive.canvas && later > alive.t + 1,
+        `sim clock ${alive.t.toFixed(2)} -> ${later.toFixed(2)}`);
+  check('no console errors with a hanging SDK', errors.length === 0, errors[0] || '');
+  await page.screenshot({ path: `${OUT}/53-hanging-sdk.png` });
+  await ctx.close();
+}
+
+// --- 6. a shipped build carries no debug tooling ----------------------------
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
